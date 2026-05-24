@@ -1,8 +1,4 @@
 for {module, path, title, icon, description, phase} <- [
-      {RagegWeb.ChatLive, "/chat", "RAG Chat", "hero-chat-bubble-left-right",
-       "AI-powered codebase Q&A with streaming and tool-call visibility", 4},
-      {RagegWeb.AuditLive, "/audit", "Audit Report", "hero-clipboard-document-check",
-       "AI-powered code audit with findings dashboard and export", 4},
       {RagegWeb.RefactorLive, "/refactor", "Visual Refactoring", "hero-wrench-screwdriver",
        "Interactive refactoring wizard with impact preview and diff", 5},
       {RagegWeb.ImpactLive, "/impact", "Impact Analysis", "hero-bolt",
