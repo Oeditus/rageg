@@ -77,3 +77,12 @@ config :phoenix_live_view,
   debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Enable dllb connection pool in development
+# Make sure dllb server is running: cargo run --release -p dllb-server
+config :dllb,
+  enabled: true,
+  host: "127.0.0.1",
+  port: 3009,
+  pool_size: 5,
+  timeout: 30_000

@@ -123,7 +123,10 @@ defmodule RagegWeb.ProfileSwitcher do
     <div class="relative">
       <%!-- Trigger button --%>
       <button
-        class="btn btn-sm btn-ghost gap-1 font-mono"
+        class={[
+          "btn btn-sm gap-1 font-mono",
+          if(@active, do: "btn-primary btn-soft", else: "btn-outline btn-warning")
+        ]}
         phx-click="toggle"
         phx-target={@myself}
       >
