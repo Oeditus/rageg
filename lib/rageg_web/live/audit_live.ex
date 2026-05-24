@@ -16,11 +16,17 @@ defmodule RagegWeb.AuditLive do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
+    active_path =
+      case Rageg.Profiles.active() do
+        %{path: p} -> p
+        _ -> ""
+      end
+
     {:ok,
      socket
      |> assign(page_title: gettext("Audit Report"))
      |> assign(current_path: "/audit")
-     |> assign(project_path: "")
+     |> assign(project_path: active_path)
      |> assign(running: false)
      |> assign(report: nil)
      |> assign(summary: nil)

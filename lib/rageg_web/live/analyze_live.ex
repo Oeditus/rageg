@@ -17,11 +17,17 @@ defmodule RagegWeb.AnalyzeLive do
   def mount(_params, _session, socket) do
     analyses = Analyze.default_analyses()
 
+    active_path =
+      case Rageg.Profiles.active() do
+        %{path: p} -> p
+        _ -> ""
+      end
+
     {:ok,
      socket
      |> assign(page_title: gettext("Run Analysis"))
      |> assign(current_path: "/analyze")
-     |> assign(project_path: "")
+     |> assign(project_path: active_path)
      |> assign(analyses: analyses)
      |> assign(running: false)
      |> assign(progress: [])

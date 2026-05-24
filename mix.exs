@@ -60,11 +60,11 @@ defmodule Rageg.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      # Ragex code analysis engine (in-BEAM)
-      {:ragex, path: "../ragex"},
-      # dllb multi-model database client
-      {:dllb, path: "../dllb_ex"}
-    ]
+      {:egit, "~> 0.2"}
+    ] ++
+      if System.get_env("LOCAL_OEDITUS"),
+        do: [{:ragex, path: "../ragex"}, {:dllb, path: "../dllb_ex"}],
+        else: [{:ragex, "~> 0.18"}, {:dllb, "~> 0.2"}]
   end
 
   # Aliases are shortcuts or tasks specific to the current project.

@@ -8,7 +8,8 @@
 import Config
 
 config :rageg,
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  profiles_dir: "~/.rageg/profiles"
 
 # Configure the endpoint
 config :rageg, RagegWeb.Endpoint,

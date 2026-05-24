@@ -15,6 +15,8 @@ defmodule Rageg.Application do
       RagegWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:rageg, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Rageg.PubSub},
+      # Profile manager -- CRUD, active project state, dllb ingestion
+      Rageg.Profiles,
       # Periodic stats collector -- polls Ragex/dllb and broadcasts via PubSub
       Rageg.Stats,
       # Start to serve requests, typically the last entry
