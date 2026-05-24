@@ -26,7 +26,7 @@
 
     <%!-- Page content --%>
     <main class="flex-1 p-4 lg:p-6">
-      {render_slot(@inner_block)}
+      {if assigns[:inner_block], do: render_slot(@inner_block), else: @inner_content}
     </main>
 
     <.flash_group flash={@flash} />
@@ -51,13 +51,13 @@
           {gettext("Overview")}
         </li>
         <li>
-          <.link navigate={~p"/"} class={nav_active(@current_path, "/")}>
+          <.link navigate={~p"/"} class={nav_active(assigns[:current_path] || "/", "/")}>
             <.icon name="hero-squares-2x2" class="size-4" />
             {gettext("Dashboard")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/analyze"} class={nav_active(@current_path, "/analyze")}>
+          <.link navigate={~p"/analyze"} class={nav_active(assigns[:current_path] || "/", "/analyze")}>
             <.icon name="hero-play-circle" class="size-4" />
             {gettext("Run Analysis")}
           </.link>
@@ -68,25 +68,25 @@
           {gettext("Visualization")}
         </li>
         <li>
-          <.link navigate={~p"/graph"} class={nav_active(@current_path, "/graph")}>
+          <.link navigate={~p"/graph"} class={nav_active(assigns[:current_path] || "/", "/graph")}>
             <.icon name="hero-share" class="size-4" />
             {gettext("Knowledge Graph")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/dependencies"} class={nav_active(@current_path, "/dependencies")}>
+          <.link navigate={~p"/dependencies"} class={nav_active(assigns[:current_path] || "/", "/dependencies")}>
             <.icon name="hero-arrow-path" class="size-4" />
             {gettext("Dependencies")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/quality"} class={nav_active(@current_path, "/quality")}>
+          <.link navigate={~p"/quality"} class={nav_active(assigns[:current_path] || "/", "/quality")}>
             <.icon name="hero-chart-bar" class="size-4" />
             {gettext("Code Quality")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/embeddings"} class={nav_active(@current_path, "/embeddings")}>
+          <.link navigate={~p"/embeddings"} class={nav_active(assigns[:current_path] || "/", "/embeddings")}>
             <.icon name="hero-sparkles" class="size-4" />
             {gettext("Embedding Space")}
           </.link>
@@ -97,25 +97,25 @@
           {gettext("Tools")}
         </li>
         <li>
-          <.link navigate={~p"/impact"} class={nav_active(@current_path, "/impact")}>
+          <.link navigate={~p"/impact"} class={nav_active(assigns[:current_path] || "/", "/impact")}>
             <.icon name="hero-bolt" class="size-4" />
             {gettext("Impact Analysis")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/refactor"} class={nav_active(@current_path, "/refactor")}>
+          <.link navigate={~p"/refactor"} class={nav_active(assigns[:current_path] || "/", "/refactor")}>
             <.icon name="hero-wrench-screwdriver" class="size-4" />
             {gettext("Refactoring")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/chat"} class={nav_active(@current_path, "/chat")}>
+          <.link navigate={~p"/chat"} class={nav_active(assigns[:current_path] || "/", "/chat")}>
             <.icon name="hero-chat-bubble-left-right" class="size-4" />
             {gettext("RAG Chat")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/audit"} class={nav_active(@current_path, "/audit")}>
+          <.link navigate={~p"/audit"} class={nav_active(assigns[:current_path] || "/", "/audit")}>
             <.icon name="hero-clipboard-document-check" class="size-4" />
             {gettext("Audit Report")}
           </.link>
@@ -126,31 +126,31 @@
           {gettext("dllb Backend")}
         </li>
         <li>
-          <.link navigate={~p"/dllb"} class={nav_active(@current_path, "/dllb", true)}>
+          <.link navigate={~p"/dllb"} class={nav_active(assigns[:current_path] || "/", "/dllb", true)}>
             <.icon name="hero-circle-stack" class="size-4" />
             {gettext("Overview")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/dllb/actors"} class={nav_active(@current_path, "/dllb/actors")}>
+          <.link navigate={~p"/dllb/actors"} class={nav_active(assigns[:current_path] || "/", "/dllb/actors")}>
             <.icon name="hero-cpu-chip" class="size-4" />
             {gettext("Actors")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/dllb/storage"} class={nav_active(@current_path, "/dllb/storage")}>
+          <.link navigate={~p"/dllb/storage"} class={nav_active(assigns[:current_path] || "/", "/dllb/storage")}>
             <.icon name="hero-server-stack" class="size-4" />
             {gettext("Storage")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/dllb/vectors"} class={nav_active(@current_path, "/dllb/vectors")}>
+          <.link navigate={~p"/dllb/vectors"} class={nav_active(assigns[:current_path] || "/", "/dllb/vectors")}>
             <.icon name="hero-cube" class="size-4" />
             {gettext("HNSW Vectors")}
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/dllb/search"} class={nav_active(@current_path, "/dllb/search")}>
+          <.link navigate={~p"/dllb/search"} class={nav_active(assigns[:current_path] || "/", "/dllb/search")}>
             <.icon name="hero-magnifying-glass" class="size-4" />
             {gettext("Full-Text Search")}
           </.link>
@@ -158,7 +158,7 @@
         <li>
           <.link
             navigate={~p"/dllb/code-intel"}
-            class={nav_active(@current_path, "/dllb/code-intel")}
+            class={nav_active(assigns[:current_path] || "/", "/dllb/code-intel")}
           >
             <.icon name="hero-code-bracket" class="size-4" />
             {gettext("Code Intel")}

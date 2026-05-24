@@ -36,37 +36,39 @@ defmodule RagegWeb.Router do
   scope "/", RagegWeb do
     pipe_through :browser
 
-    # Phase 1: Dashboard
-    live "/", DashboardLive, :index
+    live_session :default, layout: {RagegWeb.Layouts, :app} do
+      # Phase 1: Dashboard
+      live "/", DashboardLive, :index
 
-    # Phase 2: Knowledge Graph Explorer
-    live "/graph", GraphLive, :index
+      # Phase 2: Knowledge Graph Explorer
+      live "/graph", GraphLive, :index
 
-    # Phase 3: Code Quality & Dependencies
-    live "/quality", QualityLive, :index
-    live "/dependencies", DependenciesLive, :index
+      # Phase 3: Code Quality & Dependencies
+      live "/quality", QualityLive, :index
+      live "/dependencies", DependenciesLive, :index
 
-    # Phase 4: RAG Chat & Audit
-    live "/chat", ChatLive, :index
-    live "/audit", AuditLive, :index
+      # Phase 4: RAG Chat & Audit
+      live "/chat", ChatLive, :index
+      live "/audit", AuditLive, :index
 
-    # Phase 5: Visual Refactoring & Impact
-    live "/refactor", RefactorLive, :index
-    live "/impact", ImpactLive, :index
+      # Phase 5: Visual Refactoring & Impact
+      live "/refactor", RefactorLive, :index
+      live "/impact", ImpactLive, :index
 
-    # Phase 6: Embedding Space
-    live "/embeddings", EmbeddingsLive, :index
+      # Phase 6: Embedding Space
+      live "/embeddings", EmbeddingsLive, :index
 
-    # Phase 7: dllb Backend Explorer
-    live "/dllb", DllbLive, :index
-    live "/dllb/actors", DllbLive, :actors
-    live "/dllb/storage", DllbLive, :storage
-    live "/dllb/graph", DllbLive, :graph
-    live "/dllb/vectors", DllbLive, :vectors
-    live "/dllb/search", DllbLive, :search
-    live "/dllb/code-intel", DllbLive, :code_intel
+      # Phase 7: dllb Backend Explorer
+      live "/dllb", DllbLive, :index
+      live "/dllb/actors", DllbLive, :actors
+      live "/dllb/storage", DllbLive, :storage
+      live "/dllb/graph", DllbLive, :graph
+      live "/dllb/vectors", DllbLive, :vectors
+      live "/dllb/search", DllbLive, :search
+      live "/dllb/code-intel", DllbLive, :code_intel
 
-    # Phase 8: Analysis Runner
-    live "/analyze", AnalyzeLive, :index
+      # Phase 8: Analysis Runner
+      live "/analyze", AnalyzeLive, :index
+    end
   end
 end
