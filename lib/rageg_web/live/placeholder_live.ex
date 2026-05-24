@@ -1,8 +1,4 @@
 for {module, path, title, icon, description, phase} <- [
-      {RagegWeb.QualityLive, "/quality", "Code Quality", "hero-chart-bar",
-       "Complexity heatmaps, smells, duplication, and dead code analysis", 3},
-      {RagegWeb.DependenciesLive, "/dependencies", "Dependencies", "hero-arrow-path",
-       "Module coupling matrix, instability charts, and circular dependency detection", 3},
       {RagegWeb.ChatLive, "/chat", "RAG Chat", "hero-chat-bubble-left-right",
        "AI-powered codebase Q&A with streaming and tool-call visibility", 4},
       {RagegWeb.AuditLive, "/audit", "Audit Report", "hero-clipboard-document-check",

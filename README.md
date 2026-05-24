@@ -35,8 +35,24 @@ tools. Built with Phoenix 1.8, LiveView, DaisyUI, and D3.js.
 - **Node Detail Panel** -- click any node to see file, callers, callees.
 - **Export** -- download as SVG or Graphviz DOT.
 
+### Phase 3 -- Code Quality & Dependencies (current)
+
+- **Code Quality** (`/quality`) -- tabbed interface with 6 analysis dimensions:
+  - Code Smells: sortable table with type, severity, file, description
+  - Security: vulnerability scanner with severity badges
+  - Dead Code: unused function detection with confidence scores
+  - Duplication: clone pair detection (Type I-IV) with similarity percentages
+  - Complexity: cyclomatic/cognitive complexity for functions exceeding thresholds
+  - Business Logic: anti-pattern detection grouped by analyzer category
+- **Dependencies** (`/dependencies`) -- tabbed module-level analysis:
+  - Coupling: full table of Ca/Ce/Instability per module, color-coded badges
+  - Circular Deps: cycle cards with module chains
+  - God Modules: high-coupling modules with warning badges
+  - Unused Modules: modules with no incoming references
+- Summary badges on both pages with issue counts per dimension.
+- Lazy tab loading -- data fetched only when tab is activated.
+
 ### Planned
-- **Phase 3** -- Code Quality & Dependencies (treemaps, heatmaps, coupling matrix)
 - **Phase 4** -- RAG Chat & Audit (streaming AI, tool-call visibility)
 - **Phase 5** -- Visual Refactoring & Impact (CodeMirror diff, risk gauges)
 - **Phase 6** -- Embedding Space (t-SNE/UMAP scatter plots)
