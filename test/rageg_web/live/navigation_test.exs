@@ -4,7 +4,6 @@ defmodule RagegWeb.NavigationTest do
   import Phoenix.LiveViewTest
 
   @placeholder_routes [
-    {"/embeddings", "Embedding Space"},
     {"/analyze", "Run Analysis"}
   ]
 

@@ -1,6 +1,4 @@
 for {module, path, title, icon, description, phase} <- [
-      {RagegWeb.EmbeddingsLive, "/embeddings", "Embedding Space", "hero-sparkles",
-       "2D projection of code entity embeddings with semantic search", 6},
       {RagegWeb.AnalyzeLive, "/analyze", "Run Analysis", "hero-play-circle",
        "Project analyzer with live progress and configurable analyses", 8}
     ] do
