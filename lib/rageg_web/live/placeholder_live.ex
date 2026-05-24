@@ -1,8 +1,4 @@
 for {module, path, title, icon, description, phase} <- [
-      {RagegWeb.RefactorLive, "/refactor", "Visual Refactoring", "hero-wrench-screwdriver",
-       "Interactive refactoring wizard with impact preview and diff", 5},
-      {RagegWeb.ImpactLive, "/impact", "Impact Analysis", "hero-bolt",
-       "\"What if\" explorer with risk gauges and effort estimation", 5},
       {RagegWeb.EmbeddingsLive, "/embeddings", "Embedding Space", "hero-sparkles",
        "2D projection of code entity embeddings with semantic search", 6},
       {RagegWeb.AnalyzeLive, "/analyze", "Run Analysis", "hero-play-circle",
