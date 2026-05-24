@@ -3,21 +3,6 @@ defmodule RagegWeb.NavigationTest do
 
   import Phoenix.LiveViewTest
 
-  @placeholder_routes [
-    {"/analyze", "Run Analysis"}
-  ]
-
-  describe "placeholder pages" do
-    for {path, title} <- @placeholder_routes do
-      test "#{path} renders #{title}", %{conn: conn} do
-        {:ok, _view, html} = live(conn, unquote(path))
-
-        assert html =~ unquote(title)
-        assert html =~ "Phase"
-      end
-    end
-  end
-
   describe "dllb pages" do
     test "/dllb renders overview with sub-page cards", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/dllb")

@@ -52,12 +52,34 @@ tools. Built with Phoenix 1.8, LiveView, DaisyUI, and D3.js.
 - Summary badges on both pages with issue counts per dimension.
 - Lazy tab loading -- data fetched only when tab is activated.
 
-### Planned
-- **Phase 4** -- RAG Chat & Audit (streaming AI, tool-call visibility)
-- **Phase 5** -- Visual Refactoring & Impact (CodeMirror diff, risk gauges)
-- **Phase 6** -- Embedding Space (t-SNE/UMAP scatter plots)
-- **Phase 7** -- dllb Backend Explorer (HNSW layers, supervision tree, keyspace browser)
-- **Phase 8** -- Polish (i18n completion, keyboard shortcuts, accessibility)
+### Phase 4 -- RAG Chat & Audit
+
+- RAG Chat with streaming tokens, tool-call sidebar, provider selector
+- Audit Report with full analysis pipeline, markdown viewer, export
+
+### Phase 5 -- Visual Refactoring & Impact
+
+- Refactoring wizard with 6 operations, dynamic parameter forms, undo
+- Impact analysis with risk gauge, effort estimation, affected tests
+
+### Phase 6 -- Embedding Space
+
+- PCA-projected 2D scatter plot of code embeddings
+- Semantic search with result highlighting, k-NN neighbor lines
+
+### Phase 7 -- dllb Backend Explorer
+
+- Supervision tree with actor status indicators
+- Storage schema browser, graph edge types, query playground
+- HNSW vector config, FTS indexes, 38 MetaAST node types
+
+### Phase 8 -- Analysis Runner & Polish
+
+- Analysis runner with 13 configurable analysis types
+- Progress tracking with live messages
+- Result cards linking to Quality/Dependencies detail pages
+- All placeholder LiveViews replaced with real implementations
+- 100+ tests passing across all phases
 
 ## Architecture
 
