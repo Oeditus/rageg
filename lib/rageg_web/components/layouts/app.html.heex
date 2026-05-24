@@ -1,0 +1,169 @@
+<div class="drawer lg:drawer-open">
+  <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" />
+
+  <%!-- Main content area --%>
+  <div class="drawer-content flex flex-col min-h-screen">
+    <%!-- Top navbar --%>
+    <header class="navbar bg-base-200 border-b border-base-300 px-4 sticky top-0 z-30">
+      <div class="flex-none lg:hidden">
+        <label for="sidebar-toggle" class="btn btn-square btn-ghost">
+          <.icon name="hero-bars-3" class="size-5" />
+        </label>
+      </div>
+      <div class="flex-1">
+        <span class="text-lg font-bold tracking-tight">
+          {assigns[:page_title] || gettext("Dashboard")}
+        </span>
+      </div>
+      <div class="flex-none flex items-center gap-2">
+        <span class="badge badge-ghost text-xs">
+          Ragex v{Application.spec(:ragex, :vsn) || "0.0.0"}
+        </span>
+        <.theme_toggle />
+      </div>
+    </header>
+
+    <%!-- Page content --%>
+    <main class="flex-1 p-4 lg:p-6">
+      {render_slot(@inner_block)}
+    </main>
+
+    <.flash_group flash={@flash} />
+  </div>
+
+  <%!-- Sidebar --%>
+  <div class="drawer-side z-40">
+    <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
+    <aside class="bg-base-200 min-h-full w-64 border-r border-base-300">
+      <%!-- Logo / brand --%>
+      <div class="p-4 border-b border-base-300">
+        <a href="/" class="flex items-center gap-2">
+          <.icon name="hero-cube-transparent" class="size-7 text-primary" />
+          <span class="text-xl font-bold tracking-tight">Rageg</span>
+        </a>
+        <p class="text-xs text-base-content/60 mt-1">{gettext("Visual Code Intelligence")}</p>
+      </div>
+
+      <ul class="menu menu-md w-full p-2 gap-0.5">
+        <%!-- Main --%>
+        <li class="menu-title text-xs uppercase tracking-wider mt-2">
+          {gettext("Overview")}
+        </li>
+        <li>
+          <.link navigate={~p"/"} class={nav_active(@current_path, "/")}>
+            <.icon name="hero-squares-2x2" class="size-4" />
+            {gettext("Dashboard")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/analyze"} class={nav_active(@current_path, "/analyze")}>
+            <.icon name="hero-play-circle" class="size-4" />
+            {gettext("Run Analysis")}
+          </.link>
+        </li>
+
+        <%!-- Visualization --%>
+        <li class="menu-title text-xs uppercase tracking-wider mt-4">
+          {gettext("Visualization")}
+        </li>
+        <li>
+          <.link navigate={~p"/graph"} class={nav_active(@current_path, "/graph")}>
+            <.icon name="hero-share" class="size-4" />
+            {gettext("Knowledge Graph")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/dependencies"} class={nav_active(@current_path, "/dependencies")}>
+            <.icon name="hero-arrow-path" class="size-4" />
+            {gettext("Dependencies")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/quality"} class={nav_active(@current_path, "/quality")}>
+            <.icon name="hero-chart-bar" class="size-4" />
+            {gettext("Code Quality")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/embeddings"} class={nav_active(@current_path, "/embeddings")}>
+            <.icon name="hero-sparkles" class="size-4" />
+            {gettext("Embedding Space")}
+          </.link>
+        </li>
+
+        <%!-- Tools --%>
+        <li class="menu-title text-xs uppercase tracking-wider mt-4">
+          {gettext("Tools")}
+        </li>
+        <li>
+          <.link navigate={~p"/impact"} class={nav_active(@current_path, "/impact")}>
+            <.icon name="hero-bolt" class="size-4" />
+            {gettext("Impact Analysis")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/refactor"} class={nav_active(@current_path, "/refactor")}>
+            <.icon name="hero-wrench-screwdriver" class="size-4" />
+            {gettext("Refactoring")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/chat"} class={nav_active(@current_path, "/chat")}>
+            <.icon name="hero-chat-bubble-left-right" class="size-4" />
+            {gettext("RAG Chat")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/audit"} class={nav_active(@current_path, "/audit")}>
+            <.icon name="hero-clipboard-document-check" class="size-4" />
+            {gettext("Audit Report")}
+          </.link>
+        </li>
+
+        <%!-- dllb Backend --%>
+        <li class="menu-title text-xs uppercase tracking-wider mt-4">
+          {gettext("dllb Backend")}
+        </li>
+        <li>
+          <.link navigate={~p"/dllb"} class={nav_active(@current_path, "/dllb", true)}>
+            <.icon name="hero-circle-stack" class="size-4" />
+            {gettext("Overview")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/dllb/actors"} class={nav_active(@current_path, "/dllb/actors")}>
+            <.icon name="hero-cpu-chip" class="size-4" />
+            {gettext("Actors")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/dllb/storage"} class={nav_active(@current_path, "/dllb/storage")}>
+            <.icon name="hero-server-stack" class="size-4" />
+            {gettext("Storage")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/dllb/vectors"} class={nav_active(@current_path, "/dllb/vectors")}>
+            <.icon name="hero-cube" class="size-4" />
+            {gettext("HNSW Vectors")}
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/dllb/search"} class={nav_active(@current_path, "/dllb/search")}>
+            <.icon name="hero-magnifying-glass" class="size-4" />
+            {gettext("Full-Text Search")}
+          </.link>
+        </li>
+        <li>
+          <.link
+            navigate={~p"/dllb/code-intel"}
+            class={nav_active(@current_path, "/dllb/code-intel")}
+          >
+            <.icon name="hero-code-bracket" class="size-4" />
+            {gettext("Code Intel")}
+          </.link>
+        </li>
+      </ul>
+    </aside>
+  </div>
+</div>

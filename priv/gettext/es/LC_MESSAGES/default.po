@@ -1,0 +1,141 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+
+msgid "Dashboard"
+msgstr "Panel de control"
+
+msgid "Visual Code Intelligence"
+msgstr "Inteligencia visual de codigo"
+
+msgid "Real-time statistics from Ragex and dllb"
+msgstr "Estadisticas en tiempo real de Ragex y dllb"
+
+msgid "Updated"
+msgstr "Actualizado"
+
+msgid "Knowledge Graph"
+msgstr "Grafo de conocimiento"
+
+msgid "Nodes"
+msgstr "Nodos"
+
+msgid "Edges"
+msgstr "Aristas"
+
+msgid "Density"
+msgstr "Densidad"
+
+msgid "Components"
+msgstr "Componentes"
+
+msgid "Embeddings"
+msgstr "Embeddings"
+
+msgid "Model"
+msgstr "Modelo"
+
+msgid "Dimensions"
+msgstr "Dimensiones"
+
+msgid "Total Vectors"
+msgstr "Vectores totales"
+
+msgid "AI Cache"
+msgstr "Cache de IA"
+
+msgid "Hit Rate"
+msgstr "Tasa de aciertos"
+
+msgid "Misses"
+msgstr "Fallos"
+
+msgid "Evictions"
+msgstr "Expulsiones"
+
+msgid "Cache Size"
+msgstr "Tamano de cache"
+
+msgid "AI Usage"
+msgstr "Uso de IA"
+
+msgid "Requests"
+msgstr "Peticiones"
+
+msgid "Tokens"
+msgstr "Tokens"
+
+msgid "Est. Cost"
+msgstr "Coste est."
+
+msgid "dllb Backend"
+msgstr "Backend dllb"
+
+msgid "Status"
+msgstr "Estado"
+
+msgid "Connected"
+msgstr "Conectado"
+
+msgid "Disconnected"
+msgstr "Desconectado"
+
+msgid "Pool Size"
+msgstr "Tamano del pool"
+
+msgid "Latency"
+msgstr "Latencia"
+
+msgid "Overview"
+msgstr "Vista general"
+
+msgid "Run Analysis"
+msgstr "Ejecutar analisis"
+
+msgid "Visualization"
+msgstr "Visualizacion"
+
+msgid "Dependencies"
+msgstr "Dependencias"
+
+msgid "Code Quality"
+msgstr "Calidad del codigo"
+
+msgid "Embedding Space"
+msgstr "Espacio de embeddings"
+
+msgid "Tools"
+msgstr "Herramientas"
+
+msgid "Impact Analysis"
+msgstr "Analisis de impacto"
+
+msgid "Refactoring"
+msgstr "Refactorizacion"
+
+msgid "RAG Chat"
+msgstr "Chat RAG"
+
+msgid "Audit Report"
+msgstr "Informe de auditoria"
+
+msgid "Actors"
+msgstr "Actores"
+
+msgid "Storage"
+msgstr "Almacenamiento"
+
+msgid "HNSW Vectors"
+msgstr "Vectores HNSW"
+
+msgid "Full-Text Search"
+msgstr "Busqueda de texto completo"
+
+msgid "Code Intel"
+msgstr "Inteligencia de codigo"
+
+msgid "dllb Backend Explorer"
+msgstr "Explorador del backend dllb"
+
+msgid "Multi-model NoSQL database: documents, graphs, full-text, vectors"
+msgstr "Base de datos NoSQL multi-modelo: documentos, grafos, texto completo, vectores"
