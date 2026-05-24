@@ -1,6 +1,4 @@
 for {module, path, title, icon, description, phase} <- [
-      {RagegWeb.GraphLive, "/graph", "Knowledge Graph", "hero-share",
-       "Interactive force-directed graph of your codebase", 2},
       {RagegWeb.QualityLive, "/quality", "Code Quality", "hero-chart-bar",
        "Complexity heatmaps, smells, duplication, and dead code analysis", 3},
       {RagegWeb.DependenciesLive, "/dependencies", "Dependencies", "hero-arrow-path",

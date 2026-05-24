@@ -8,7 +8,7 @@ tools. Built with Phoenix 1.8, LiveView, DaisyUI, and D3.js.
 
 ## Features
 
-### Phase 1 (current)
+### Phase 1 -- Skeleton & Dashboard
 
 - **Real-time Dashboard** -- live stat cards for knowledge graph, embeddings,
   AI cache, AI usage, and dllb backend health. Auto-refreshes via PubSub
@@ -20,9 +20,22 @@ tools. Built with Phoenix 1.8, LiveView, DaisyUI, and D3.js.
 - **dllb Backend Explorer** -- hub page with card links to all dllb subsystems
   (actors, storage, graph, vectors, search, code-intel).
 
-### Planned
+### Phase 2 -- Knowledge Graph Explorer (current)
 
-- **Phase 2** -- Knowledge Graph Explorer (D3.js force-directed, community overlays)
+- **D3.js Force-Directed Graph** -- interactive visualization of the code
+  knowledge graph with zoom, pan, and drag.
+- **Metric Coloring** -- toggle between PageRank, betweenness, degree, and
+  community coloring with smooth transitions.
+- **Node Sizing** -- proportional to the selected metric.
+- **Edge Thickness** -- proportional to call weight (frequency).
+- **Community Hulls** -- convex hull overlays when community mode is active.
+- **Minimap** -- bottom-right overview with viewport indicator.
+- **Module Filtering** -- real-time filter by module prefix.
+- **Max Nodes Slider** -- control graph density (50--1000 nodes).
+- **Node Detail Panel** -- click any node to see file, callers, callees.
+- **Export** -- download as SVG or Graphviz DOT.
+
+### Planned
 - **Phase 3** -- Code Quality & Dependencies (treemaps, heatmaps, coupling matrix)
 - **Phase 4** -- RAG Chat & Audit (streaming AI, tool-call visibility)
 - **Phase 5** -- Visual Refactoring & Impact (CodeMirror diff, risk gauges)
@@ -92,6 +105,7 @@ rageg/
         core_components.ex -- Flash, button, input, table, etc.
       live/
         dashboard_live.ex  -- Real-time dashboard with stat cards
+        graph_live.ex      -- Knowledge Graph Explorer with D3 hook
         dllb_live.ex       -- dllb backend explorer (sub-page router)
         placeholder_live.ex -- Placeholder stubs for future phases
       plugs/
@@ -102,12 +116,18 @@ rageg/
       en/LC_MESSAGES/      -- English (passthrough)
       es/LC_MESSAGES/      -- Spanish translations
       ca/LC_MESSAGES/      -- Catalan translations
+  assets/
+    js/
+      hooks/
+        graph_hook.js      -- D3.js force-directed graph visualization
   test/
     rageg/
       stats_test.exs       -- Stats GenServer unit tests
+      graph_test.exs       -- Graph context module tests
     rageg_web/
       live/
         dashboard_live_test.exs  -- Dashboard LiveView tests
+        graph_live_test.exs      -- Graph Explorer LiveView tests
         navigation_test.exs      -- Route and sidebar tests
       plugs/
         locale_test.exs    -- Locale plug tests

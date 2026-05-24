@@ -108,6 +108,24 @@ Rageg depends on Ragex as a path dependency (same umbrella). Key APIs used:
 - `Ragex.Editor.Refactor.*` -- semantic refactoring (Phase 5)
 - `Ragex.Agent.Core.*` -- RAG chat agent (Phase 4)
 
+## Phase 2: Knowledge Graph Explorer
+
+The graph explorer is the most complex client-server interaction:
+
+1. `GraphLive.mount/3` sends `:load_graph` to itself on connect
+2. `handle_info(:load_graph)` calls `Rageg.Graph.fetch_d3_data/1`
+3. `Rageg.Graph` calls `Ragex.Graph.Algorithms.export_d3_json/1`, enriches
+   nodes with betweenness centrality, computes community hulls
+4. The enriched `%{nodes, links, communities, stats}` map is pushed to the
+   client via `push_event("graph_data", data)`
+5. `GraphHook` (D3.js) receives the data and builds the force simulation
+6. User clicks a node -> `pushEvent("node_selected", {node_id: ...})`
+7. Server calls `Rageg.Graph.node_details/1` -> assigns `selected_node`
+8. Detail panel re-renders server-side with callers/callees
+
+Metric changes are handled client-side only (no server round-trip) since
+all metrics are pre-computed in the initial data push.
+
 ## Dependencies on dllb
 
 - `Dllb.query/1` -- raw query execution for health checks

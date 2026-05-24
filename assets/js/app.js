@@ -25,11 +25,23 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/rageg"
 import topbar from "../vendor/topbar"
 
+// D3.js -- exposed globally for hooks
+import * as d3 from "d3"
+window.d3 = d3
+
+// Custom LiveView hooks
+import createGraphHook from "./hooks/graph_hook"
+
+const Hooks = {
+  ...colocatedHooks,
+  GraphHook: createGraphHook(),
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: Hooks,
 })
 
 // Show progress bar on live navigation and form submits

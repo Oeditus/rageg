@@ -4,7 +4,6 @@ defmodule RagegWeb.NavigationTest do
   import Phoenix.LiveViewTest
 
   @placeholder_routes [
-    {"/graph", "Knowledge Graph"},
     {"/quality", "Code Quality"},
     {"/dependencies", "Dependencies"},
     {"/chat", "RAG Chat"},

@@ -5,7 +5,7 @@ defmodule RagegWeb.DashboardLiveTest do
 
   describe "GET /" do
     test "renders the dashboard page", %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/")
+      {:ok, _view, html} = live(conn, ~p"/")
 
       # Page title
       assert html =~ "Dashboard"

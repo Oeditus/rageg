@@ -139,3 +139,51 @@ msgstr "Explorador del backend dllb"
 
 msgid "Multi-model NoSQL database: documents, graphs, full-text, vectors"
 msgstr "Base de datos NoSQL multi-modelo: documentos, grafos, texto completo, vectores"
+
+msgid "Filter by module..."
+msgstr "Filtrar por modulo..."
+
+msgid "Nodes:"
+msgstr "Nodos:"
+
+msgid "nodes"
+msgstr "nodos"
+
+msgid "edges"
+msgstr "aristas"
+
+msgid "communities"
+msgstr "comunidades"
+
+msgid "Refresh"
+msgstr "Actualizar"
+
+msgid "Export SVG"
+msgstr "Exportar SVG"
+
+msgid "Export DOT"
+msgstr "Exportar DOT"
+
+msgid "Failed to export DOT"
+msgstr "Error al exportar DOT"
+
+msgid "Module:"
+msgstr "Modulo:"
+
+msgid "Arity:"
+msgstr "Aridad:"
+
+msgid "Connections"
+msgstr "Conexiones"
+
+msgid "Callers"
+msgstr "Llamantes"
+
+msgid "Callees"
+msgstr "Llamados"
+
+msgid "Called by"
+msgstr "Llamado por"
+
+msgid "Calls"
+msgstr "Llama a"

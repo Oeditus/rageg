@@ -140,3 +140,51 @@ msgstr ""
 
 msgid "Multi-model NoSQL database: documents, graphs, full-text, vectors"
 msgstr ""
+
+msgid "Filter by module..."
+msgstr ""
+
+msgid "Nodes:"
+msgstr ""
+
+msgid "nodes"
+msgstr ""
+
+msgid "edges"
+msgstr ""
+
+msgid "communities"
+msgstr ""
+
+msgid "Refresh"
+msgstr ""
+
+msgid "Export SVG"
+msgstr ""
+
+msgid "Export DOT"
+msgstr ""
+
+msgid "Failed to export DOT"
+msgstr ""
+
+msgid "Module:"
+msgstr ""
+
+msgid "Arity:"
+msgstr ""
+
+msgid "Connections"
+msgstr ""
+
+msgid "Callers"
+msgstr ""
+
+msgid "Callees"
+msgstr ""
+
+msgid "Called by"
+msgstr ""
+
+msgid "Calls"
+msgstr ""
