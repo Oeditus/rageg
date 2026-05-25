@@ -11,6 +11,9 @@ defmodule Rageg.Application do
 
   @impl true
   def start(_type, _args) do
+    # Attach Logger-backed telemetry handlers for ingestion pipeline
+    Rageg.Profiles.IngestTelemetry.attach()
+
     children = [
       RagegWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:rageg, :dns_cluster_query) || :ignore},
