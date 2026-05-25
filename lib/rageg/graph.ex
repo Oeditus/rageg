@@ -62,18 +62,37 @@ defmodule Rageg.Graph do
       nodes =
         base.nodes
         |> Enum.map(fn node ->
+          pretty_id = prettify_id(node.id)
+
           node
-          |> Map.put(:betweenness, Map.get(betweenness, node.id, 0.0))
-          |> Map.put(:label, node_label(node))
-          |> Map.put(:module_name, extract_module(node.id))
+          |> Map.put(:id, pretty_id)
+          |> Map.put(
+            :betweenness,
+            Map.get(betweenness, node.id, 0.0) || Map.get(betweenness, pretty_id, 0.0)
+          )
+          |> Map.put(:label, node_label(%{node | id: pretty_id}))
+          |> Map.put(:module_name, extract_module(pretty_id))
         end)
         |> maybe_filter_module(module_filter)
 
       # Filter links to only include visible nodes
       node_ids = MapSet.new(nodes, & &1.id)
 
+      # Build a mapping from original IDs to prettified IDs for link remapping
+      original_to_pretty =
+        base.nodes
+        |> Map.new(fn node -> {node.id, prettify_id(node.id)} end)
+
       links =
-        Enum.filter(base.links, fn link ->
+        base.links
+        |> Enum.map(fn link ->
+          %{
+            link
+            | source: Map.get(original_to_pretty, link.source, prettify_id(link.source)),
+              target: Map.get(original_to_pretty, link.target, prettify_id(link.target))
+          }
+        end)
+        |> Enum.filter(fn link ->
           MapSet.member?(node_ids, link.source) and MapSet.member?(node_ids, link.target)
         end)
 
@@ -104,10 +123,12 @@ defmodule Rageg.Graph do
   """
   @spec node_details(String.t()) :: map() | nil
   def node_details(node_id_string) do
-    # Try to find the node by looking up all nodes and matching the string ID
+    # Try to find the node by matching both the raw and prettified string ID
     Store.list_nodes(nil, :infinity)
     |> Enum.find_value(fn node ->
-      if format_id(node) == node_id_string do
+      raw = format_id(node)
+
+      if raw == node_id_string or prettify_id(raw) == node_id_string do
         build_node_details(node, node_id_string)
       end
     end)
@@ -153,18 +174,96 @@ defmodule Rageg.Graph do
   defp format_id(%{type: :module, id: name}), do: "#{name}"
   defp format_id(%{type: type, id: id}), do: "#{type}:#{inspect(id)}"
 
+  @doc false
+  @spec prettify_id(String.t()) :: String.t()
+  def prettify_id(id) when is_binary(id) do
+    cond do
+      # Already in Module.fun/arity format
+      Regex.match?(~r/^[A-Z][\w.]*\.\w+\/\d+$/, id) ->
+        id
+
+      # Already a clean module name
+      Regex.match?(~r/^[A-Z][\w.]*$/, id) ->
+        id
+
+      # Inspected 4-tuple: {:type, Module, :name, arity}
+      match = Regex.run(~r/^\{:\w+,\s*([^,]+),\s*:?(\w+),\s*(\d+)\}$/, id) ->
+        [_, mod_raw, name, arity] = match
+        mod = mod_raw |> String.trim() |> String.replace_prefix("Elixir.", "")
+        "#{mod}.#{name}/#{arity}"
+
+      # Inspected 2-tuple: {:type, Module}
+      match = Regex.run(~r/^\{:\w+,\s*([A-Z][\w.]*)\}$/, id) ->
+        [_, mod] = match
+        String.replace_prefix(mod, "Elixir.", "")
+
+      # Colon-separated format: type:rest_Module_fun_N
+      match = Regex.run(~r/^\w+:(.+)$/, id) ->
+        [_, rest] = match
+        parse_underscore_encoded(rest)
+
+      true ->
+        id
+    end
+  end
+
+  # Parses underscore-encoded identifiers like "access_Kernel_max_2"
+  # into "Kernel.max/2" by detecting capitalized module segments.
+  defp parse_underscore_encoded(rest) do
+    parts = String.split(rest, "_")
+
+    # Find the first capitalized part (module start)
+    case Enum.split_while(parts, fn p -> not String.match?(p, ~r/^[A-Z]/) end) do
+      {_prefix, []} ->
+        rest
+
+      {_prefix, mod_and_rest} ->
+        # Split: capitalized segments = module, then lowercase = fun, trailing digit = arity
+        {mod_parts, after_mod} =
+          Enum.split_while(mod_and_rest, fn p -> String.match?(p, ~r/^[A-Z]/) end)
+
+        module = Enum.join(mod_parts, ".")
+
+        case after_mod do
+          [] ->
+            module
+
+          _ ->
+            # Last element might be arity (pure digits) or line number
+            {fun_parts, maybe_arity} =
+              case Integer.parse(List.last(after_mod)) do
+                {n, ""} when n < 256 ->
+                  {Enum.drop(after_mod, -1), "/#{n}"}
+
+                _ ->
+                  {after_mod, ""}
+              end
+
+            fun_name = Enum.join(fun_parts, "_")
+
+            if fun_name == "" do
+              "#{module}#{maybe_arity}"
+            else
+              "#{module}.#{fun_name}#{maybe_arity}"
+            end
+        end
+    end
+  end
+
   defp node_label(%{id: id, type: "function"}) do
-    case String.split(id, ".") do
+    pretty = prettify_id(id)
+
+    case String.split(pretty, ".") do
       [_mod, func_part] -> func_part
-      _ -> id
+      _ -> pretty
     end
   end
 
   defp node_label(%{id: id, type: "module"}) do
-    id |> String.split(".") |> List.last()
+    prettify_id(id) |> String.split(".") |> List.last()
   end
 
-  defp node_label(%{id: id}), do: id
+  defp node_label(%{id: id}), do: prettify_id(id)
 
   defp extract_module(id) when is_binary(id) do
     case String.split(id, ".") do
@@ -206,12 +305,12 @@ defmodule Rageg.Graph do
 
     callers =
       Store.get_incoming_edges(node_key, :calls)
-      |> Enum.map(fn edge -> format_node_id(edge.from) end)
+      |> Enum.map(fn edge -> edge.from |> format_node_id() |> prettify_id() end)
       |> Enum.take(20)
 
     callees =
       Store.get_outgoing_edges(node_key, :calls)
-      |> Enum.map(fn edge -> format_node_id(edge.to) end)
+      |> Enum.map(fn edge -> edge.to |> format_node_id() |> prettify_id() end)
       |> Enum.take(20)
 
     # Build metrics

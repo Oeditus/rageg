@@ -36,7 +36,9 @@ defmodule RagegWeb.Router do
   scope "/", RagegWeb do
     pipe_through :browser
 
-    live_session :default, layout: {RagegWeb.Layouts, :app} do
+    live_session :default,
+      layout: {RagegWeb.Layouts, :app},
+      on_mount: [{RagegWeb.Hooks.ProfileHook, :default}] do
       # Phase 1: Dashboard
       live "/", DashboardLive, :index
 

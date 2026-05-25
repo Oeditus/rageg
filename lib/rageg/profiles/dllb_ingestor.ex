@@ -77,6 +77,7 @@ defmodule Rageg.Profiles.DllbIngestor do
           end
         end)
 
+      Rageg.Dllb.save_ingest_stats(project_tag, result)
       on_progress.("Done: #{result.files_ok} files, #{result.nodes} nodes, #{result.edges} edges")
       {:ok, result}
     end

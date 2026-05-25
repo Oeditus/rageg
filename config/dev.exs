@@ -86,3 +86,6 @@ config :dllb,
   port: 3009,
   pool_size: 5,
   timeout: 30_000
+
+# Use dllb as the Ragex store backend (instead of default ETS)
+config :ragex, :store_backend, :dllb

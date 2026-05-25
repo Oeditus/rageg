@@ -114,7 +114,8 @@ defmodule RagegWeb.DashboardLive do
           value={if @stats.dllb.connected, do: gettext("Connected"), else: gettext("Disconnected")}
           badge_color={if @stats.dllb.connected, do: "badge-success", else: "badge-error"}
         />
-        <.stat_card label={gettext("Pool Size")} value={format_number(@stats.dllb.pool_size)} />
+        <.stat_card label={gettext("AST Nodes")} value={format_number(@stats.dllb.nodes)} />
+        <.stat_card label={gettext("Edges")} value={format_number(@stats.dllb.edges)} />
         <.stat_card label={gettext("Latency")} value={"#{@stats.dllb.latency_ms} ms"} />
       </.stat_section>
     </div>

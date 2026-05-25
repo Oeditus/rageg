@@ -61,10 +61,16 @@ defmodule Rageg.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:egit, "~> 0.2"}
+      # Always use local path deps in development; hex versions for prod releases.
+      # The walk_tree infinite-loop fix in dllb_ex and the Store backend
+      # delegation fix in ragex are required for rageg to function correctly.
     ] ++
-      if System.get_env("LOCAL_OEDITUS"),
-        do: [{:ragex, path: "../ragex"}, {:dllb, path: "../dllb_ex"}],
-        else: [{:ragex, "~> 0.18"}, {:dllb, "~> 0.2"}]
+      if Mix.env() == :prod and is_nil(System.get_env("LOCAL_OEDITUS")),
+        do: [{:ragex, "~> 0.18"}, {:dllb, "~> 0.2"}],
+        else: [
+          {:ragex, path: "../ragex", override: true},
+          {:dllb, path: "../dllb_ex", override: true}
+        ]
   end
 
   # Aliases are shortcuts or tasks specific to the current project.

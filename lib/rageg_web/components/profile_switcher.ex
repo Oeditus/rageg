@@ -13,10 +13,6 @@ defmodule RagegWeb.ProfileSwitcher do
 
   @impl Phoenix.LiveComponent
   def mount(socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Rageg.PubSub, Profiles.topic())
-    end
-
     {:ok,
      socket
      |> assign(profiles: Profiles.list())
@@ -31,6 +27,25 @@ defmodule RagegWeb.ProfileSwitcher do
   end
 
   @impl Phoenix.LiveComponent
+  def update(%{_action: :switch_progress, progress_msg: msg}, socket) do
+    {:ok, assign(socket, progress: msg)}
+  end
+
+  def update(%{_action: :switch_done}, socket) do
+    {:ok,
+     socket
+     |> assign(
+       switching: false,
+       progress: nil,
+       active: Profiles.active(),
+       profiles: Profiles.list()
+     )}
+  end
+
+  def update(%{_action: :profile_switched, profile: profile}, socket) do
+    {:ok, assign(socket, active: profile, profiles: Profiles.list())}
+  end
+
   def update(assigns, socket) do
     {:ok, assign(socket, assigns)}
   end
@@ -77,14 +92,21 @@ defmodule RagegWeb.ProfileSwitcher do
   end
 
   def handle_event("switch_profile", %{"id" => id}, socket) do
-    pid = self()
+    parent = self()
+    cid = "profile-switcher"
 
     Task.start(fn ->
       Profiles.switch(id,
-        on_progress: fn msg -> send(pid, {:switch_progress, msg}) end
+        on_progress: fn msg ->
+          Phoenix.LiveView.send_update(parent, __MODULE__,
+            id: cid,
+            _action: :switch_progress,
+            progress_msg: msg
+          )
+        end
       )
 
-      send(pid, :switch_done)
+      Phoenix.LiveView.send_update(parent, __MODULE__, id: cid, _action: :switch_done)
     end)
 
     {:noreply, assign(socket, switching: true, open: false, progress: "Switching...")}
@@ -93,28 +115,6 @@ defmodule RagegWeb.ProfileSwitcher do
   def handle_event("delete_profile", %{"id" => id}, socket) do
     Profiles.delete(id)
     {:noreply, assign(socket, profiles: Profiles.list())}
-  end
-
-  # LiveComponents receive handle_info via the parent LiveView process.
-  # These are dispatched by the parent's handle_info forwarding or
-  # by Task messages sent to self() within event handlers.
-  def handle_info({:switch_progress, msg}, socket) do
-    {:noreply, assign(socket, progress: msg)}
-  end
-
-  def handle_info(:switch_done, socket) do
-    {:noreply,
-     socket
-     |> assign(
-       switching: false,
-       progress: nil,
-       active: Profiles.active(),
-       profiles: Profiles.list()
-     )}
-  end
-
-  def handle_info({:profile_switched, profile}, socket) do
-    {:noreply, assign(socket, active: profile, profiles: Profiles.list())}
   end
 
   @impl Phoenix.LiveComponent

@@ -39,6 +39,7 @@ defmodule Rageg.Profiles.CoreIngestor do
             {:ok, result} ->
               Logger.info("Elixir core ingested: #{result.files_ok} files, #{result.nodes} nodes")
 
+              Rageg.Dllb.save_ingest_stats(@core_project_tag, result)
               File.mkdir_p!(Path.dirname(sentinel))
               File.write!(sentinel, "ingested at #{DateTime.utc_now()}\n")
               :ok

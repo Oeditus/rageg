@@ -84,7 +84,7 @@ defmodule Rageg.Stats do
       embeddings: %{model: "n/a", dimensions: 0, total: 0},
       cache: %{hit_rate: 0.0, misses: 0, evictions: 0, size: 0},
       ai_usage: %{total_requests: 0, total_tokens: 0, estimated_cost: 0.0},
-      dllb: %{connected: false, pool_size: 0, latency_ms: 0},
+      dllb: %{connected: false, pool_size: 0, latency_ms: 0, nodes: 0, edges: 0, projects: 0},
       fetched_at: DateTime.utc_now()
     }
   end
@@ -129,30 +129,41 @@ defmodule Rageg.Stats do
   end
 
   defp fetch_graph_stats do
-    stats = Ragex.stats()
+    # Use persisted ingestion stats directly -- the live `Ragex.stats()` path
+    # runs SELECT id, kind FROM ast_node which returns ~100K rows as a single
+    # JSON line, overflowing the TCP line-packet buffer and corrupting the
+    # connection pool.
+    ingested = Rageg.Dllb.aggregate_ingest_stats()
 
     %{
-      nodes: Map.get(stats, :nodes, 0),
-      edges: Map.get(stats, :edges, 0),
-      density: Map.get(stats, :density, 0.0),
-      components: Map.get(stats, :connected_components, 0)
+      nodes: ingested.nodes,
+      edges: ingested.edges,
+      density: 0.0,
+      components: 0
     }
   rescue
     _ -> %{nodes: 0, edges: 0, density: 0.0, components: 0}
   end
 
   defp fetch_embedding_stats do
-    case Ragex.VectorStore.stats() do
-      stats when is_map(stats) ->
-        %{
-          model: Map.get(stats, :model, "n/a"),
-          dimensions: Map.get(stats, :dimensions, 0),
-          total: Map.get(stats, :total_embeddings, 0)
-        }
+    vs_stats =
+      case Ragex.VectorStore.stats() do
+        s when is_map(s) -> s
+        _ -> %{}
+      end
 
-      _ ->
-        %{model: "n/a", dimensions: 0, total: 0}
-    end
+    # Model name comes from Bumblebee, not VectorStore
+    model_name =
+      case Ragex.Embeddings.Bumblebee.model_info() do
+        %{name: name} -> name
+        _ -> "n/a"
+      end
+
+    %{
+      model: model_name,
+      dimensions: Map.get(vs_stats, :dimensions, 0),
+      total: Map.get(vs_stats, :total_embeddings, 0)
+    }
   rescue
     _ -> %{model: "n/a", dimensions: 0, total: 0}
   end
@@ -196,25 +207,29 @@ defmodule Rageg.Stats do
 
   defp fetch_dllb_health do
     connected = dllb_available?()
+    ingested = Rageg.Dllb.aggregate_ingest_stats()
 
     %{
       connected: connected,
       pool_size: Application.get_env(:dllb, :pool_size, 0),
-      latency_ms: if(connected, do: measure_dllb_latency(), else: 0)
+      latency_ms: if(connected, do: measure_dllb_latency(), else: 0),
+      nodes: ingested.nodes,
+      edges: ingested.edges,
+      projects: ingested.projects
     }
   rescue
-    _ -> %{connected: false, pool_size: 0, latency_ms: 0}
+    _ -> %{connected: false, pool_size: 0, latency_ms: 0, nodes: 0, edges: 0, projects: 0}
   end
 
   defp dllb_available? do
     Application.get_env(:dllb, :enabled, false) &&
-      match?({:ok, _}, Dllb.query("SELECT 1"))
+      match?({:ok, %Dllb.Result.Rows{}}, Dllb.query("SELECT * FROM _dllb_ping_"))
   rescue
     _ -> false
   end
 
   defp measure_dllb_latency do
-    {microseconds, _} = :timer.tc(fn -> Dllb.query("SELECT 1") end)
+    {microseconds, _} = :timer.tc(fn -> Dllb.query("SELECT * FROM _dllb_ping_") end)
     div(microseconds, 1_000)
   rescue
     _ -> 0

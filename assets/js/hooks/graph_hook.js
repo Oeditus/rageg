@@ -401,9 +401,10 @@ function createGraphHook() {
         `Betweenness: ${(d.betweenness || 0).toFixed(4)}`
       ].join("<br/>");
 
+      const displayName = d.label || d.id;
       this.tooltip
         .style("display", "block")
-        .html(`<strong>${d.id}</strong><br/><span style="opacity:0.7">${d.type}</span><br/>${metrics}`)
+        .html(`<strong>${displayName}</strong><br/><span style="opacity:0.7">${d.type}</span><br/>${metrics}`)
         .style("left", `${event.offsetX + 12}px`)
         .style("top", `${event.offsetY - 10}px`);
     },
