@@ -10,6 +10,7 @@ defmodule RagegWeb.Hooks.ProfileHook do
         on_mount: [RagegWeb.Hooks.ProfileHook]
   """
 
+  import Phoenix.Component, only: [assign: 3]
   import Phoenix.LiveView, only: [attach_hook: 4, connected?: 1]
 
   alias Rageg.Profiles
@@ -19,10 +20,12 @@ defmodule RagegWeb.Hooks.ProfileHook do
       Phoenix.PubSub.subscribe(Rageg.PubSub, Profiles.topic())
     end
 
+    socket = assign(socket, :active_profile, Profiles.active())
     {:cont, attach_hook(socket, :profile_pubsub, :handle_info, &handle_profile_info/2)}
   end
 
   defp handle_profile_info({:profile_switched, profile}, socket) do
+    # Keep the ProfileSwitcher component in sync.
     Phoenix.LiveView.send_update(
       RagegWeb.ProfileSwitcher,
       id: "profile-switcher",
@@ -30,7 +33,11 @@ defmodule RagegWeb.Hooks.ProfileHook do
       profile: profile
     )
 
-    {:halt, socket}
+    # Notify the current LiveView so it can reload path-dependent data.
+    # Uses a distinct atom to avoid conflicts with the raw PubSub message.
+    send(self(), {:rageg_profile_changed, profile})
+
+    {:halt, assign(socket, :active_profile, profile)}
   end
 
   defp handle_profile_info(_msg, socket), do: {:cont, socket}

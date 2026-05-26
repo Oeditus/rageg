@@ -161,7 +161,7 @@ defmodule Rageg.Profiles.DllbIngestor do
     _ -> :ok
   end
 
-  defp ingest_one(file_path, language, project_tag, batch_size) do
+  defp ingest_one(file_path, language, project_tag, _batch_size) do
     context = %{
       language: language,
       file_path: file_path,
@@ -186,37 +186,38 @@ defmodule Rageg.Profiles.DllbIngestor do
 
       # Upsert (idempotent)
       upserts = Enum.map(creates, &(&1 <> " ON CONFLICT UPDATE"))
+      all_queries = upserts ++ relates
 
-      {node_ok, _node_err} =
-        IngestTelemetry.span(:batch_nodes, %{path: file_path, count: length(upserts)}, fn ->
-          execute_batched(upserts, batch_size)
-        end)
+      {node_ok, edge_ok} =
+        IngestTelemetry.span(
+          :batch_nodes,
+          %{path: file_path, count: length(all_queries)},
+          fn ->
+            case Dllb.batch_transaction(all_queries) do
+              {:ok, %Dllb.Result.Batch{created: created, updated: updated}} ->
+                {created + updated, length(relates)}
 
-      {edge_ok, _edge_err} =
-        IngestTelemetry.span(:batch_edges, %{path: file_path, count: length(relates)}, fn ->
-          execute_batched(relates, batch_size)
-        end)
+              {:ok, %Dllb.Result.Error{message: msg}} ->
+                Logger.warning("Batch error for #{file_path}: #{msg}")
+                {0, 0}
+
+              {:ok, unexpected} ->
+                Logger.warning(
+                  "Batch returned unexpected result for #{file_path}: #{inspect(unexpected)}"
+                )
+
+                {0, 0}
+
+              {:error, reason} ->
+                Logger.warning("Batch failed for #{file_path}: #{inspect(reason)}")
+                {0, 0}
+            end
+          end
+        )
 
       {:ok, node_ok, edge_ok}
     end
   rescue
     e -> {:error, {:exception, Exception.message(e)}}
-  end
-
-  defp execute_batched(queries, batch_size) do
-    queries
-    |> Enum.chunk_every(batch_size)
-    |> Enum.reduce({0, 0}, fn chunk, {ok_acc, err_acc} ->
-      results = Dllb.batch(chunk)
-
-      ok =
-        Enum.count(results, fn
-          {:ok, %Dllb.Result.Error{}} -> false
-          {:ok, _} -> true
-          _ -> false
-        end)
-
-      {ok_acc + ok, err_acc + (length(results) - ok)}
-    end)
   end
 end

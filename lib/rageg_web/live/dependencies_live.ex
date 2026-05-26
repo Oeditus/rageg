@@ -40,6 +40,11 @@ defmodule RagegWeb.DependenciesLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    send(self(), {:load_tab, socket.assigns.active_tab})
+    {:noreply, assign(socket, loading: true, items: [])}
+  end
+
   def handle_info({:load_tab, tab}, socket) do
     items = fetch_tab_data(tab)
     summary = Dependencies.summary()

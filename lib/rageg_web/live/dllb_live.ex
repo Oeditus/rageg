@@ -39,6 +39,11 @@ defmodule RagegWeb.DllbLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
   def handle_event("run_query", %{"query" => q}, socket) when q != "" do
     case Dllb.query(q) do
       {:ok, result} ->

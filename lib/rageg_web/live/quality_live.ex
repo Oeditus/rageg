@@ -26,7 +26,7 @@ defmodule RagegWeb.QualityLive do
   @impl Phoenix.LiveView
   def handle_params(_params, _uri, socket) do
     if connected?(socket) do
-      path = detect_project_path()
+      path = socket.assigns.active_profile && socket.assigns.active_profile.path
       send(self(), {:load_tab, socket.assigns.active_tab, path})
       {:noreply, assign(socket, loading: true, analysis_path: path)}
     else
@@ -42,9 +42,15 @@ defmodule RagegWeb.QualityLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, profile}, socket) do
+    path = profile && profile.path
+    send(self(), {:load_tab, socket.assigns.active_tab, path})
+    {:noreply, assign(socket, loading: true, analysis_path: path)}
+  end
+
   def handle_info({:load_tab, tab, path}, socket) do
     items = fetch_tab_data(tab, path)
-    summary = Quality.summary(path || "lib")
+    summary = if path, do: Quality.summary(path), else: nil
 
     {:noreply,
      socket
@@ -273,13 +279,13 @@ defmodule RagegWeb.QualityLive do
 
   # -- Helpers --
 
-  defp fetch_tab_data(:smells, path) do
-    {:ok, items} = Quality.fetch_smells(path || "lib")
+  defp fetch_tab_data(:smells, path) when is_binary(path) do
+    {:ok, items} = Quality.fetch_smells(path)
     items
   end
 
-  defp fetch_tab_data(:security, path) do
-    {:ok, items} = Quality.fetch_security(path || "lib")
+  defp fetch_tab_data(:security, path) when is_binary(path) do
+    {:ok, items} = Quality.fetch_security(path)
     items
   end
 
@@ -288,30 +294,22 @@ defmodule RagegWeb.QualityLive do
     items
   end
 
-  defp fetch_tab_data(:duplication, path) do
-    {:ok, items} = Quality.fetch_duplication(path || "lib")
+  defp fetch_tab_data(:duplication, path) when is_binary(path) do
+    {:ok, items} = Quality.fetch_duplication(path)
     items
   end
 
-  defp fetch_tab_data(:complexity, path) do
-    {:ok, items} = Quality.fetch_complexity(path || "lib")
+  defp fetch_tab_data(:complexity, path) when is_binary(path) do
+    {:ok, items} = Quality.fetch_complexity(path)
     items
   end
 
-  defp fetch_tab_data(:business_logic, path) do
-    {:ok, items} = Quality.fetch_business_logic(path || "lib")
+  defp fetch_tab_data(:business_logic, path) when is_binary(path) do
+    {:ok, items} = Quality.fetch_business_logic(path)
     items
   end
 
   defp fetch_tab_data(_, _), do: []
-
-  defp detect_project_path do
-    # Use the auto-analyze dirs config if available, otherwise default
-    case Application.get_env(:ragex, :auto_analyze_dirs) do
-      [path | _] -> path
-      _ -> nil
-    end
-  end
 
   defp severity_class(:critical), do: "badge-error"
   defp severity_class(:high), do: "badge-warning"

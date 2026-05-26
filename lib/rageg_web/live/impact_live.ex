@@ -54,6 +54,10 @@ defmodule RagegWeb.ImpactLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    {:noreply, socket}
+  end
+
   def handle_info({:impact_results, analysis, risk, tests}, socket) do
     analysis_data =
       case analysis do

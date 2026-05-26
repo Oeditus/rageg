@@ -84,13 +84,14 @@ defmodule Rageg.Profiles.IngestTelemetry do
       exception_event = [:rageg, :ingest, phase, :exception]
 
       [
-        {stop_id, stop_event, &handle_stop/4},
-        {exception_id, exception_event, &handle_exception/4}
+        {stop_id, stop_event, &__MODULE__.handle_stop/4},
+        {exception_id, exception_event, &__MODULE__.handle_exception/4}
       ]
     end)
   end
 
-  defp handle_stop(event, measurements, metadata, _config) do
+  @doc false
+  def handle_stop(event, measurements, metadata, _config) do
     phase = event |> Enum.at(2) |> Atom.to_string()
     duration_ms = div(measurements.duration, 1_000_000)
     extra = format_meta(metadata)
@@ -98,7 +99,8 @@ defmodule Rageg.Profiles.IngestTelemetry do
     Logger.info("[ingest:#{phase}] #{duration_ms}ms#{extra}")
   end
 
-  defp handle_exception(event, measurements, metadata, _config) do
+  @doc false
+  def handle_exception(event, measurements, metadata, _config) do
     phase = event |> Enum.at(2) |> Atom.to_string()
     duration_ms = div(measurements.duration, 1_000_000)
     kind = metadata[:kind]

@@ -6,19 +6,17 @@ defmodule Rageg.Profiles do
   the currently active profile and orchestrates switching between
   projects (triggering dllb ingestion and PubSub broadcasts).
 
-  On first startup, automatically ingests the Elixir core library
-  if a dllb server is connected and the sentinel file is missing.
-
   ## PubSub
 
   Broadcasts `{:profile_switched, profile}` on the `"profiles"` topic
-  whenever the active profile changes.
+  whenever the active profile changes. Broadcasts `{:profile_switched, nil}`
+  when all profiles are cleared.
   """
 
   use GenServer
 
   alias Rageg.Profile
-  alias Rageg.Profiles.{CoreIngestor, DllbIngestor}
+  alias Rageg.Profiles.DllbIngestor
 
   @topic "profiles"
 
@@ -69,6 +67,20 @@ defmodule Rageg.Profiles do
   end
 
   @doc """
+  Deletes all saved profiles and resets the active profile to nil.
+
+  Removes every `.json` file in the profiles directory, clears the
+  in-memory active profile, and broadcasts `{:profile_switched, nil}` so
+  connected LiveViews update their UI immediately.
+  """
+  @spec clear_all!() :: :ok
+  def clear_all! do
+    GenServer.call(__MODULE__, :clear_all)
+  catch
+    :exit, _ -> :ok
+  end
+
+  @doc """
   Switches to a profile by ID.
 
   Triggers dllb ingestion for the profile's project directory, sets
@@ -92,18 +104,8 @@ defmodule Rageg.Profiles do
 
     state = %{
       active: nil,
-      profiles_dir: dir,
-      rageg_dir: rageg_base_dir()
+      profiles_dir: dir
     }
-
-    # Trigger core ingestion in background on first startup
-    rageg_dir = state.rageg_dir
-
-    Task.start(fn ->
-      if dllb_connected?() do
-        CoreIngestor.maybe_ingest(rageg_dir)
-      end
-    end)
 
     {:ok, state}
   end
@@ -154,6 +156,17 @@ defmodule Rageg.Profiles do
     end
   end
 
+  def handle_call(:clear_all, _from, state) do
+    state.profiles_dir
+    |> Path.join("*.json")
+    |> Path.wildcard()
+    |> Enum.each(&File.rm!/1)
+
+    Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, nil})
+
+    {:reply, :ok, %{state | active: nil}}
+  end
+
   def handle_call({:switch, id, opts}, _from, state) do
     on_progress = Keyword.get(opts, :on_progress, fn _ -> :ok end)
 
@@ -193,10 +206,6 @@ defmodule Rageg.Profiles do
     |> Path.expand()
   end
 
-  defp rageg_base_dir do
-    profiles_dir() |> Path.dirname()
-  end
-
   defp load_all_profiles(dir) do
     dir
     |> Path.join("*.json")
@@ -204,8 +213,9 @@ defmodule Rageg.Profiles do
     |> Enum.flat_map(fn file ->
       case File.read(file) do
         {:ok, json} ->
-          case Jason.decode(json) do
-            {:ok, map} -> [Profile.from_json(map)]
+          try do
+            [Profile.from_json(:json.decode(json))]
+          rescue
             _ -> []
           end
 
@@ -224,11 +234,8 @@ defmodule Rageg.Profiles do
 
   defp save_profile(%Profile{} = profile, dir) do
     file = Path.join(dir, "#{profile.id}.json")
-
-    case Jason.encode(profile, pretty: true) do
-      {:ok, json} -> File.write(file, json)
-      error -> error
-    end
+    json = profile |> Map.from_struct() |> :json.encode() |> IO.iodata_to_binary()
+    File.write(file, json)
   end
 
   defp dllb_connected? do

@@ -58,6 +58,11 @@ defmodule RagegWeb.GraphLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    send(self(), :load_graph)
+    {:noreply, assign(socket, loading: true, selected_node: nil)}
+  end
+
   def handle_info(:load_graph, socket) do
     opts = [
       max_nodes: socket.assigns.max_nodes,

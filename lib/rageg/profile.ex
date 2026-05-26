@@ -11,8 +11,6 @@ defmodule Rageg.Profile do
   - Timestamps for creation and last ingestion
   """
 
-  @derive Jason.Encoder
-
   @type t :: %__MODULE__{
           id: String.t(),
           name: String.t(),

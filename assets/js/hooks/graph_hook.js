@@ -24,12 +24,37 @@ const COMMUNITY_COLORS = [
   "#f1ce63", "#a0cbe8", "#d37295", "#fabfd2", "#b6992d"
 ];
 
-const METRIC_SCALES = {
-  pagerank:    { domain: [0, 0.05], colorRange: ["#e8f4f8", "#1a5276"] },
-  betweenness: { domain: [0, 0.5],  colorRange: ["#fef9e7", "#7d6608"] },
-  degree:      { domain: [0, 20],   colorRange: ["#f0f3f4", "#1b4f72"] },
-  community:   { domain: null,      colorRange: null } // uses categorical
-};
+// Theme-aware metric color scales.
+// Detected once per render; light vs dark determined by the HTML data-theme
+// attribute or by checking the effective background luminance.
+function getMetricScales() {
+  const isDark = detectDarkMode();
+  return {
+    pagerank: {
+      domain: [0, 0.05],
+      colorRange: isDark ? ["#1a3a4a", "#5dade2"] : ["#e8f4f8", "#1a5276"]
+    },
+    betweenness: {
+      domain: [0, 0.5],
+      colorRange: isDark ? ["#3d3200", "#f4d03f"] : ["#fef9e7", "#7d6608"]
+    },
+    degree: {
+      domain: [0, 20],
+      colorRange: isDark ? ["#1a2e3d", "#85c1e9"] : ["#f0f3f4", "#1b4f72"]
+    },
+    community: { domain: null, colorRange: null }
+  };
+}
+
+function detectDarkMode() {
+  // DaisyUI sets data-theme on <html>; many dark themes contain "dark" in the name.
+  const theme = document.documentElement.getAttribute("data-theme") || "";
+  if (/dark|night|black|dim|dracula|forest|halloween|luxury|sunset|synthwave|coffee/i.test(theme)) {
+    return true;
+  }
+  // Fallback: check prefers-color-scheme media query
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
 
 function createGraphHook() {
   return {
@@ -78,9 +103,9 @@ function createGraphHook() {
         .style("border-radius", "6px")
         .style("font-size", "12px")
         .style("z-index", "100")
-        .style("background", "oklch(var(--b2))")
-        .style("color", "oklch(var(--bc))")
-        .style("border", "1px solid oklch(var(--b3))")
+        .style("background", "var(--color-base-200)")
+        .style("color", "var(--color-base-content)")
+        .style("border", "1px solid var(--color-base-300)")
         .style("box-shadow", "0 2px 8px rgba(0,0,0,0.15)");
 
       // Set up zoom behavior
@@ -112,6 +137,9 @@ function createGraphHook() {
 
     renderGraph(data) {
       this.graphData = data;
+      // Refresh theme-aware color scales on each render
+      this._metricScales = getMetricScales();
+
       if (!data.nodes || data.nodes.length === 0) {
         this.showEmptyState();
         return;
@@ -140,7 +168,7 @@ function createGraphHook() {
         .data(links)
         .join("line")
         .attr("class", "graph-link")
-        .attr("stroke", "oklch(var(--bc) / 0.15)")
+        .style("stroke", "color-mix(in oklch, var(--color-base-content) 15%, transparent)")
         .attr("stroke-width", d => Math.max(0.5, Math.min(4, (d.weight || 1) * 1.5)))
         .attr("marker-end", "url(#arrowhead)");
 
@@ -157,7 +185,7 @@ function createGraphHook() {
         .attr("orient", "auto")
         .append("path")
         .attr("d", "M0,-5L10,0L0,5")
-        .attr("fill", "oklch(var(--bc) / 0.2)");
+        .style("fill", "color-mix(in oklch, var(--color-base-content) 20%, transparent)");
 
       // Draw nodes
       const node = this.nodeLayer.selectAll("circle")
@@ -166,7 +194,7 @@ function createGraphHook() {
         .attr("class", "graph-node")
         .attr("r", d => this.nodeRadius(d))
         .attr("fill", d => this.nodeColor(d))
-        .attr("stroke", "oklch(var(--b1))")
+        .style("stroke", "var(--color-base-100)")
         .attr("stroke-width", 1.5)
         .attr("cursor", "pointer")
         .on("click", (event, d) => {
@@ -189,7 +217,7 @@ function createGraphHook() {
         .attr("text-anchor", "middle")
         .attr("dy", d => this.nodeRadius(d) + 12)
         .attr("font-size", "9px")
-        .attr("fill", "oklch(var(--bc) / 0.7)")
+        .style("fill", "color-mix(in oklch, var(--color-base-content) 70%, transparent)")
         .attr("pointer-events", "none")
         .text(d => d.label || d.id);
 
@@ -258,7 +286,8 @@ function createGraphHook() {
         return COMMUNITY_COLORS[Math.abs(idx) % COMMUNITY_COLORS.length];
       }
 
-      const scale = METRIC_SCALES[this.metric] || METRIC_SCALES.pagerank;
+      const scales = this._metricScales || (this._metricScales = getMetricScales());
+      const scale = scales[this.metric] || scales.pagerank;
       const val = this.metricValue(d);
       const t = Math.min(1, Math.max(0, (val - scale.domain[0]) / (scale.domain[1] - scale.domain[0])));
       return interpolateColor(scale.colorRange[0], scale.colorRange[1], t);
@@ -325,12 +354,12 @@ function createGraphHook() {
       // Visual highlight
       this._nodes
         .attr("stroke-width", n => n.id === d.id ? 3 : 1.5)
-        .attr("stroke", n => n.id === d.id ? "oklch(var(--p))" : "oklch(var(--b1))");
+        .style("stroke", n => n.id === d.id ? "var(--color-primary)" : "var(--color-base-100)");
 
       // Highlight connected edges
       this._links
-        .attr("stroke", l => (l.source.id === d.id || l.target.id === d.id)
-          ? "oklch(var(--p) / 0.6)" : "oklch(var(--bc) / 0.15)")
+        .style("stroke", l => (l.source.id === d.id || l.target.id === d.id)
+          ? "color-mix(in oklch, var(--color-primary) 60%, transparent)" : "color-mix(in oklch, var(--color-base-content) 15%, transparent)")
         .attr("stroke-width", l => (l.source.id === d.id || l.target.id === d.id)
           ? 2.5 : Math.max(0.5, Math.min(4, (l.weight || 1) * 1.5)));
 
@@ -344,10 +373,10 @@ function createGraphHook() {
 
       this._nodes
         .attr("stroke-width", 1.5)
-        .attr("stroke", "oklch(var(--b1))");
+        .style("stroke", "var(--color-base-100)");
 
       this._links
-        .attr("stroke", "oklch(var(--bc) / 0.15)")
+        .style("stroke", "color-mix(in oklch, var(--color-base-content) 15%, transparent)")
         .attr("stroke-width", d => Math.max(0.5, Math.min(4, (d.weight || 1) * 1.5)));
 
       this.pushEvent("node_deselected", {});
@@ -419,7 +448,7 @@ function createGraphHook() {
         .attr("x", this.width / 2)
         .attr("y", this.height / 2)
         .attr("text-anchor", "middle")
-        .attr("fill", "oklch(var(--bc) / 0.4)")
+        .style("fill", "color-mix(in oklch, var(--color-base-content) 40%, transparent)")
         .attr("font-size", "16px")
         .text("No graph data. Run an analysis first.");
     },
@@ -453,15 +482,15 @@ function createGraphHook() {
         .style("position", "absolute")
         .style("bottom", "8px")
         .style("right", "8px")
-        .style("border", "1px solid oklch(var(--b3))")
+        .style("border", "1px solid var(--color-base-300)")
         .style("border-radius", "6px")
-        .style("background", "oklch(var(--b2) / 0.8)")
+        .style("background", "color-mix(in oklch, var(--color-base-200) 80%, transparent)")
         .style("pointer-events", "none");
 
       this.minimapGroup = this.minimapSvg.append("g");
       this.minimapViewport = this.minimapSvg.append("rect")
         .attr("fill", "none")
-        .attr("stroke", "oklch(var(--p))")
+        .style("stroke", "var(--color-primary)")
         .attr("stroke-width", 1.5)
         .attr("rx", 2);
     },

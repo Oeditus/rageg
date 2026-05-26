@@ -36,6 +36,11 @@ defmodule RagegWeb.EmbeddingsLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    send(self(), :load_data)
+    {:noreply, assign(socket, loading: true, selected_point: nil, neighbors: [])}
+  end
+
   def handle_info(:load_data, socket) do
     {:ok, points} = Embeddings.fetch_scatter_data()
     stats = Embeddings.stats()

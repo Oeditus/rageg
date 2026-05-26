@@ -11,8 +11,9 @@ defmodule Rageg.Application do
 
   @impl true
   def start(_type, _args) do
-    # Attach Logger-backed telemetry handlers for ingestion pipeline
+    # Attach Logger-backed telemetry handlers
     Rageg.Profiles.IngestTelemetry.attach()
+    Rageg.Graph.Telemetry.attach()
 
     children = [
       RagegWeb.Telemetry,

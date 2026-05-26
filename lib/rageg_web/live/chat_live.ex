@@ -97,6 +97,10 @@ defmodule RagegWeb.ChatLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    {:noreply, socket}
+  end
+
   def handle_info({:stream_chunk, chunk}, socket) do
     content = chunk[:content] || chunk["content"] || ""
     current = socket.assigns.streaming_content

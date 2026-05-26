@@ -71,6 +71,11 @@ defmodule RagegWeb.AnalyzeLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, profile}, socket) do
+    path = (profile && profile.path) || ""
+    {:noreply, assign(socket, project_path: path)}
+  end
+
   def handle_info({:progress, msg}, socket) do
     progress = socket.assigns.progress ++ [msg]
     {:noreply, assign(socket, progress: progress)}

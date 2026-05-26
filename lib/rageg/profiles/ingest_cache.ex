@@ -75,6 +75,25 @@ defmodule Rageg.Profiles.IngestCache do
     :ok
   end
 
+  @doc """
+  Removes all cached manifests.
+
+  After this call every project will be treated as fully new on the next
+  ingestion run, regardless of whether the source files have changed.
+  """
+  @spec clear_all!() :: :ok
+  def clear_all! do
+    dir = Path.expand(@cache_dir)
+
+    if File.dir?(dir) do
+      dir
+      |> File.ls!()
+      |> Enum.each(fn name -> File.rm!(Path.join(dir, name)) end)
+    end
+
+    :ok
+  end
+
   # -- Private --
 
   defp manifest_path(project_tag) do
@@ -86,7 +105,7 @@ defmodule Rageg.Profiles.IngestCache do
     path = manifest_path(project_tag)
 
     case File.read(path) do
-      {:ok, json} -> Jason.decode!(json)
+      {:ok, json} -> :json.decode(json)
       _ -> %{}
     end
   rescue
@@ -96,11 +115,7 @@ defmodule Rageg.Profiles.IngestCache do
   defp save_manifest(project_tag, manifest) do
     path = manifest_path(project_tag)
     File.mkdir_p!(Path.dirname(path))
-
-    case Jason.encode(manifest, pretty: true) do
-      {:ok, json} -> File.write(path, json)
-      error -> error
-    end
+    File.write(path, IO.iodata_to_binary(:json.encode(manifest)))
   end
 
   defp fingerprint(path) do

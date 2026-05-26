@@ -60,7 +60,9 @@ defmodule RagegWeb.RefactorLive do
   end
 
   def handle_event("undo", _params, socket) do
-    case Refactor.undo(".") do
+    project_path = (socket.assigns.active_profile && socket.assigns.active_profile.path) || "."
+
+    case Refactor.undo(project_path) do
       {:ok, result} ->
         {:noreply, assign(socket, result: {:undo, result}, error: nil)}
 
@@ -70,6 +72,10 @@ defmodule RagegWeb.RefactorLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    {:noreply, socket}
+  end
+
   def handle_info({:refactor_result, {:ok, result}}, socket) do
     {:noreply, assign(socket, executing: false, result: {:ok, result})}
   end

@@ -90,6 +90,11 @@ defmodule RagegWeb.AuditLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_info({:rageg_profile_changed, profile}, socket) do
+    path = (profile && profile.path) || ""
+    {:noreply, assign(socket, project_path: path)}
+  end
+
   def handle_info({:audit_complete, {:ok, result}}, socket) do
     {:noreply,
      socket

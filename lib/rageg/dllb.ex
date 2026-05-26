@@ -11,6 +11,9 @@ defmodule Rageg.Dllb do
 
   @stats_file "~/.rageg/.dllb_stats.json"
 
+  # SurrealDB-style RELATE edge tables that must be wiped on full reset.
+  @edge_tables ~w[calls contains imports type_ref inherits defines]
+
   @doc "Returns true if dllb pool is enabled and reachable."
   @spec connected?() :: boolean()
   def connected? do
@@ -41,7 +44,7 @@ defmodule Rageg.Dllb do
     merged = Map.put(existing, project_tag, entry)
 
     File.mkdir_p!(Path.dirname(path))
-    File.write(path, Jason.encode!(merged, pretty: true))
+    File.write(path, IO.iodata_to_binary(:json.encode(merged)))
   end
 
   @doc "Loads persisted ingestion stats from disk."
@@ -50,7 +53,7 @@ defmodule Rageg.Dllb do
     path = Path.expand(@stats_file)
 
     case File.read(path) do
-      {:ok, json} -> Jason.decode!(json)
+      {:ok, json} -> :json.decode(json)
       _ -> %{}
     end
   rescue
@@ -73,6 +76,53 @@ defmodule Rageg.Dllb do
         projects: acc.projects + 1
       }
     end)
+  end
+
+  @doc """
+  Full state reset: wipes dllb, stats cache, ingest cache, and all profiles.
+
+  Clears the following in order:
+
+    1. `~/.rageg/.dllb_stats.json` -- persisted dashboard node/edge counts
+    2. Per-file ingest-cache manifests -- so every file is treated as new on
+       the next ingestion run
+    3. All project profiles -- JSON files in `~/.rageg/profiles/` and the
+       GenServer's active-profile state; broadcasts `{:profile_switched, nil}`
+    4. dllb tables -- `ast_node`, `_edge_idx`, and all RELATE edge tables
+
+  Raises on file system errors. dllb query failures are logged but do not
+  raise since the server may not be running.
+  """
+  @spec clear_all!() :: :ok
+  def clear_all! do
+    # 1. Wipe the persisted stats JSON.
+    stats_path = Path.expand(@stats_file)
+
+    if File.exists?(stats_path) do
+      File.rm!(stats_path)
+    end
+
+    # 2. Clear per-file ingest-cache manifests.
+    Rageg.Profiles.IngestCache.clear_all!()
+
+    # 3. Delete all saved project profiles and clear the active state.
+    Rageg.Profiles.clear_all!()
+
+    # 4. Clear dllb tables if the server is reachable.
+    tables = ["ast_node", "_edge_idx" | @edge_tables]
+
+    Enum.each(tables, fn table ->
+      case Dllb.query("DELETE #{table}") do
+        {:ok, _} ->
+          :ok
+
+        {:error, reason} ->
+          require(Logger)
+          Logger.warning("[Rageg.Dllb.clear_all!] DELETE #{table} failed: #{inspect(reason)}")
+      end
+    end)
+
+    :ok
   end
 
   @doc "Returns dllb connection configuration."

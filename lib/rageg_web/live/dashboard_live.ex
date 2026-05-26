@@ -29,7 +29,9 @@ defmodule RagegWeb.DashboardLive do
      socket
      |> assign(page_title: gettext("Dashboard"))
      |> assign(current_path: "/")
-     |> assign(stats: stats)}
+     |> assign(stats: stats)
+     |> assign(reset_confirming: false)
+     |> assign(reset_running: false)}
   end
 
   @impl Phoenix.LiveView
@@ -37,10 +39,88 @@ defmodule RagegWeb.DashboardLive do
     {:noreply, assign(socket, stats: stats)}
   end
 
+  def handle_info({:rageg_profile_changed, _profile}, socket) do
+    # Stats auto-refresh via the existing PubSub poller; nothing extra needed.
+    {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("show_reset_confirm", _params, socket) do
+    {:noreply, assign(socket, reset_confirming: true)}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("cancel_reset", _params, socket) do
+    {:noreply, assign(socket, reset_confirming: false)}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("confirm_reset", _params, socket) do
+    socket = assign(socket, reset_running: true, reset_confirming: false)
+
+    # Clear dllb tables and the stats JSON file.
+    Rageg.Dllb.clear_all!()
+
+    # Clear the Ragex in-memory graph, vector store, AI cache, and usage.
+    safe_clear(fn -> Ragex.Graph.Store.clear() end)
+    safe_clear(fn -> Ragex.AI.Cache.clear() end)
+    safe_clear(fn -> Ragex.Embeddings.Persistence.clear(:all) end)
+    safe_clear(fn -> Ragex.Analysis.Quality.clear_all() end)
+    safe_clear(fn -> Ragex.AI.Usage.reset_stats() end)
+
+    # Apply the empty snapshot immediately so the counters reset in the UI
+    # without waiting for the next background poll.
+    {:noreply,
+     socket
+     |> assign(reset_running: false)
+     |> assign(stats: Stats.empty_snapshot())}
+  end
+
+  defp safe_clear(fun) do
+    fun.()
+  rescue
+    _ -> :ok
+  end
+
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
+      <%!-- Reset confirmation overlay --%>
+      <%= if @reset_confirming do %>
+        <div
+          id="reset-confirm-overlay"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        >
+          <div class="bg-base-100 rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4">
+            <h3 class="text-lg font-bold text-error mb-2">
+              {gettext("Reset All State?")}
+            </h3>
+            <p class="text-sm text-base-content/70 mb-6">
+              {gettext(
+                "This will permanently delete all ingested nodes, edges, embeddings, AI cache, and usage data. The dashboard will reset to zero."
+              )}
+            </p>
+            <div class="flex gap-3 justify-end">
+              <button
+                id="reset-cancel-btn"
+                phx-click="cancel_reset"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-base-200 hover:bg-base-300 transition-colors"
+              >
+                {gettext("Cancel")}
+              </button>
+              <button
+                id="reset-confirm-btn"
+                phx-click="confirm_reset"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-error text-error-content hover:bg-error/90 transition-colors"
+              >
+                {gettext("Yes, Reset Everything")}
+              </button>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
       <%!-- Header --%>
       <div class="flex items-center justify-between">
         <div>
@@ -49,8 +129,23 @@ defmodule RagegWeb.DashboardLive do
             {gettext("Real-time statistics from Ragex and dllb")}
           </p>
         </div>
-        <div class="badge badge-outline badge-sm">
-          {gettext("Updated")} {Calendar.strftime(@stats.fetched_at, "%H:%M:%S")}
+        <div class="flex items-center gap-3">
+          <div class="badge badge-outline badge-sm">
+            {gettext("Updated")} {Calendar.strftime(@stats.fetched_at, "%H:%M:%S")}
+          </div>
+          <button
+            id="reset-state-btn"
+            phx-click="show_reset_confirm"
+            disabled={@reset_running}
+            class={[
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+              "bg-error/10 text-error hover:bg-error/20 border border-error/20",
+              @reset_running && "opacity-50 cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-trash" class="size-3.5" />
+            {if @reset_running, do: gettext("Resetting..."), else: gettext("Reset State")}
+          </button>
         </div>
       </div>
 

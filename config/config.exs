@@ -43,6 +43,13 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
+# Tell EXLA/Bumblebee to use the CPU backend.
+# This machine has no GPU; without this EXLA still defaults to CPU but XLA
+# probes CUDA at library-load time and emits a cuda_platform.cc error to
+# stderr. Setting default_client :host skips CUDA path in Elixir code and,
+# combined with CUDA_VISIBLE_DEVICES="" in the shell, fully silences the log.
+config :exla, default_client: :host
+
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
