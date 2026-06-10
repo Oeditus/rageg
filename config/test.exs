@@ -10,6 +10,11 @@ config :rageg, RagegWeb.Endpoint,
 # Print only warnings and errors during test
 config :logger, level: :warning
 
+# Tests/CI run on the CPU backend for determinism and GPU independence.
+# Rageg.NxBackend.setup/0 honors :nx_acceleration; :host skips the CUDA probe entirely.
+config :rageg, :nx_acceleration, :host
+config :exla, default_client: :host
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 

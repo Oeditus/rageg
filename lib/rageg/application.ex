@@ -11,6 +11,10 @@ defmodule Rageg.Application do
 
   @impl true
   def start(_type, _args) do
+    # Select the Nx/EXLA backend (CUDA when available, else CPU) before anything
+    # triggers tensor compilation or model loading.
+    Rageg.NxBackend.setup()
+
     # Attach Logger-backed telemetry handlers
     Rageg.Profiles.IngestTelemetry.attach()
     Rageg.Graph.Telemetry.attach()

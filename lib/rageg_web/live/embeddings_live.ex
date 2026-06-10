@@ -53,16 +53,12 @@ defmodule RagegWeb.EmbeddingsLive do
 
   @impl Phoenix.LiveView
   def handle_event("search", %{"query" => query}, socket) when query != "" do
-    case Embeddings.search(query) do
-      {:ok, ids} ->
-        {:noreply,
-         socket
-         |> assign(search_query: query)
-         |> push_event("highlight_search", %{ids: ids})}
+    {:ok, ids} = Embeddings.search(query)
 
-      _ ->
-        {:noreply, socket}
-    end
+    {:noreply,
+     socket
+     |> assign(search_query: query)
+     |> push_event("highlight_search", %{ids: ids})}
   end
 
   def handle_event("search", _params, socket) do
@@ -77,16 +73,12 @@ defmodule RagegWeb.EmbeddingsLive do
   end
 
   def handle_event("point_selected", %{"id" => id}, socket) do
-    case Embeddings.nearest_neighbors(id, 5) do
-      {:ok, neighbor_ids} ->
-        {:noreply,
-         socket
-         |> assign(selected_point: id, neighbors: neighbor_ids)
-         |> push_event("show_neighbors", %{source: id, neighbors: neighbor_ids})}
+    {:ok, neighbor_ids} = Embeddings.nearest_neighbors(id, 5)
 
-      _ ->
-        {:noreply, assign(socket, selected_point: id, neighbors: [])}
-    end
+    {:noreply,
+     socket
+     |> assign(selected_point: id, neighbors: neighbor_ids)
+     |> push_event("show_neighbors", %{source: id, neighbors: neighbor_ids})}
   end
 
   def handle_event("point_deselected", _params, socket) do

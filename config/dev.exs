@@ -89,3 +89,7 @@ config :dllb,
 
 # Use dllb as the Ragex store backend (instead of default ETS)
 config :ragex, :store_backend, :dllb
+
+# Nx/EXLA acceleration: prefer CUDA (GPU), fall back to CPU only if unavailable.
+# Resolved at runtime by Rageg.NxBackend.setup/0.
+config :rageg, :nx_acceleration, :auto

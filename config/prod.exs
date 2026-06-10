@@ -22,5 +22,9 @@ config :rageg, RagegWeb.Endpoint,
 # Do not print debug messages in production
 config :logger, level: :info
 
+# Nx/EXLA acceleration: prefer CUDA (GPU), fall back to CPU only if unavailable.
+# Resolved at runtime by Rageg.NxBackend.setup/0.
+config :rageg, :nx_acceleration, :auto
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
