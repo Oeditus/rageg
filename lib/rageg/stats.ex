@@ -129,20 +129,35 @@ defmodule Rageg.Stats do
   end
 
   defp fetch_graph_stats do
-    # Use persisted ingestion stats directly -- the live `Ragex.stats()` path
-    # runs SELECT id, kind FROM ast_node which returns ~100K rows as a single
-    # JSON line, overflowing the TCP line-packet buffer and corrupting the
-    # connection pool.
+    # Node/edge totals come from persisted ingestion stats -- the live
+    # `Ragex.stats()` path runs SELECT id, kind FROM ast_node which returns
+    # ~100K rows as a single JSON line, overflowing the TCP line-packet buffer
+    # and corrupting the connection pool.
+    #
+    # Components, by contrast, are computed server-side via the native
+    # `GRAPH COMPONENTS` statement, which returns only a small summary, so it
+    # is safe to query on every poll. Density is still derived elsewhere.
     ingested = Rageg.Dllb.aggregate_ingest_stats()
 
     %{
       nodes: ingested.nodes,
       edges: ingested.edges,
       density: 0.0,
-      components: 0
+      components: graph_components()
     }
   rescue
     _ -> %{nodes: 0, edges: 0, density: 0.0, components: 0}
+  end
+
+  # Connected-component count of the call graph. Delegates to Ragex (native
+  # dllb `GRAPH COMPONENTS` when the dllb backend is active), guarding against
+  # any failure or process exit so a stats poll never crashes.
+  defp graph_components do
+    Ragex.Graph.Algorithms.connected_components()
+  rescue
+    _ -> 0
+  catch
+    _, _ -> 0
   end
 
   defp fetch_embedding_stats do
