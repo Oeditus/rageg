@@ -24,26 +24,53 @@ const COMMUNITY_COLORS = [
   "#f1ce63", "#a0cbe8", "#d37295", "#fabfd2", "#b6992d"
 ];
 
-// Theme-aware metric color scales.
-// Detected once per render; light vs dark determined by the HTML data-theme
-// attribute or by checking the effective background luminance.
-function getMetricScales() {
+// Theme-aware metric color ramps (low -> high).
+//
+// Domains are NOT hardcoded: absolute metric magnitudes are tiny and scale
+// with graph size (PageRank is a probability ~ 1/N; betweenness is normalized
+// by the full node count), so a fixed domain collapses every node onto the
+// bottom of the ramp. We derive the domain per render from the actual data
+// extent instead -- see computeMetricExtents / normalizedMetric.
+function getMetricColorRamps() {
   const isDark = detectDarkMode();
   return {
-    pagerank: {
-      domain: [0, 0.05],
-      colorRange: isDark ? ["#1a3a4a", "#5dade2"] : ["#e8f4f8", "#1a5276"]
-    },
-    betweenness: {
-      domain: [0, 0.5],
-      colorRange: isDark ? ["#3d3200", "#f4d03f"] : ["#fef9e7", "#7d6608"]
-    },
-    degree: {
-      domain: [0, 20],
-      colorRange: isDark ? ["#1a2e3d", "#85c1e9"] : ["#f0f3f4", "#1b4f72"]
-    },
-    community: { domain: null, colorRange: null }
+    pagerank: isDark ? ["#1a3a4a", "#5dade2"] : ["#e8f4f8", "#1a5276"],
+    betweenness: isDark ? ["#3d3200", "#f4d03f"] : ["#fef9e7", "#7d6608"],
+    degree: isDark ? ["#1a2e3d", "#85c1e9"] : ["#f0f3f4", "#1b4f72"]
   };
+}
+
+// Per-metric [min, max] across the displayed nodes, used to normalize both the
+// color ramp and the node radius so relative differences stay visible no
+// matter how small the absolute values are.
+function computeMetricExtents(nodes) {
+  const extentOf = (key) => {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const n of nodes) {
+      const v = n[key] || 0;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    return isFinite(min) ? [min, max] : [0, 0];
+  };
+
+  return {
+    pagerank: extentOf("pagerank"),
+    betweenness: extentOf("betweenness"),
+    degree: extentOf("degree")
+  };
+}
+
+// Formats a metric value for display: very small (or very large) magnitudes
+// use scientific notation, everything else trims to at most 4 decimals.
+function formatMetricNumber(v) {
+  if (!v) return "0";
+  const abs = Math.abs(v);
+  if (abs >= 0.001 && abs < 1.0e6) {
+    return parseFloat(v.toFixed(4)).toString();
+  }
+  return v.toExponential(2);
 }
 
 function detectDarkMode() {
@@ -137,8 +164,8 @@ function createGraphHook() {
 
     renderGraph(data) {
       this.graphData = data;
-      // Refresh theme-aware color scales on each render
-      this._metricScales = getMetricScales();
+      // Refresh theme-aware color ramps on each render (theme may have changed)
+      this._metricRamps = getMetricColorRamps();
 
       if (!data.nodes || data.nodes.length === 0) {
         this.showEmptyState();
@@ -154,6 +181,9 @@ function createGraphHook() {
 
       const nodes = data.nodes.map(d => ({...d}));
       const links = data.links.map(d => ({...d}));
+
+      // Derive per-metric color/size domains from the actual displayed values.
+      this._metricExtents = computeMetricExtents(nodes);
 
       // Create simulation
       this.simulation = d3.forceSimulation(nodes)
@@ -265,19 +295,43 @@ function createGraphHook() {
     },
 
     nodeRadius(d) {
-      const val = this.metricValue(d);
       const base = d.type === "module" ? 8 : 5;
-      return Math.max(3, Math.min(20, base + val * 60));
+      return Math.max(3, Math.min(20, base + this.normalizedMetric(d) * 12));
     },
 
+    // Raw value of the active metric for a node.
     metricValue(d) {
       switch (this.metric) {
         case "pagerank": return d.pagerank || 0;
         case "betweenness": return d.betweenness || 0;
-        case "degree": return (d.degree || 0) / 20;
-        case "community": return 0.3;
+        case "degree": return d.degree || 0;
         default: return d.pagerank || 0;
       }
+    },
+
+    // Active metric mapped to 0..1 against the displayed data extent, so the
+    // (often tiny) absolute values still span the full color and size range.
+    normalizedMetric(d) {
+      if (this.metric === "community") return 0.4;
+
+      const extents = this._metricExtents || {};
+      const [min, max] = extents[this.metric] || [0, 0];
+      if (max <= min) return 0;
+
+      return Math.min(1, Math.max(0, (this.metricValue(d) - min) / (max - min)));
+    },
+
+    // Tooltip label: the raw value plus its position within the displayed
+    // range (the same normalization the color and size use), so tiny absolute
+    // values read clearly instead of rounding to 0.
+    metricLabel(value, metric) {
+      const v = value || 0;
+      const ext = this._metricExtents && this._metricExtents[metric];
+      if (ext && ext[1] > ext[0]) {
+        const pct = Math.round(((v - ext[0]) / (ext[1] - ext[0])) * 100);
+        return `${formatMetricNumber(v)} (${pct}% of max)`;
+      }
+      return formatMetricNumber(v);
     },
 
     nodeColor(d) {
@@ -286,11 +340,10 @@ function createGraphHook() {
         return COMMUNITY_COLORS[Math.abs(idx) % COMMUNITY_COLORS.length];
       }
 
-      const scales = this._metricScales || (this._metricScales = getMetricScales());
-      const scale = scales[this.metric] || scales.pagerank;
-      const val = this.metricValue(d);
-      const t = Math.min(1, Math.max(0, (val - scale.domain[0]) / (scale.domain[1] - scale.domain[0])));
-      return interpolateColor(scale.colorRange[0], scale.colorRange[1], t);
+      const ramps = this._metricRamps || (this._metricRamps = getMetricColorRamps());
+      const ramp = ramps[this.metric] || ramps.pagerank;
+      const t = this.normalizedMetric(d);
+      return interpolateColor(ramp[0], ramp[1], t);
     },
 
     updateMetric(metric) {
@@ -425,9 +478,9 @@ function createGraphHook() {
 
     showTooltip(event, d) {
       const metrics = [
-        `PageRank: ${(d.pagerank || 0).toFixed(4)}`,
-        `Degree: ${d.degree || 0}`,
-        `Betweenness: ${(d.betweenness || 0).toFixed(4)}`
+        `PageRank: ${this.metricLabel(d.pagerank, "pagerank")}`,
+        `Degree: ${this.metricLabel(d.degree, "degree")}`,
+        `Betweenness: ${this.metricLabel(d.betweenness, "betweenness")}`
       ].join("<br/>");
 
       const displayName = d.label || d.id;
