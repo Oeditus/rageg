@@ -269,34 +269,30 @@ defmodule Rageg.Graph do
             format_human_name(mod, name, nil)
 
           k when k in [:container, "container"] ->
-            maybe_strip_elixir(to_string(data[:name] || n.id))
+            maybe_strip_elixir(to_nil_string(data[:name] || n.id))
 
           _ ->
             # For any other kind (import, variable, etc.) include module if present
             format_human_name(mod, name, arity)
         end
 
-      # Index by both the full dllb ID and the bare ID (without ast_node: prefix)
-      entries = [{to_string(n.id), human_name}]
-
-      entries =
-        if dllb_id do
-          bare = String.replace_prefix(to_string(dllb_id), "ast_node:", "")
-          [{to_string(dllb_id), human_name}, {bare, human_name} | entries]
-        else
-          entries
-        end
-
-      # Also index by the reconstructed MetaAST file-based ID
-      # (format: "ast_node:file_stem_name_line") so lookups succeed even when
-      # the raw row[:id] format differs from what export_d3_json returns.
-      entries =
-        case reconstruct_meta_ast_id(data) do
-          nil -> entries
-          meta_id -> [{meta_id, human_name} | entries]
-        end
-
-      entries
+      # Index by every key shape that might match the D3 node IDs: the node
+      # name, the dllb record id (full and bare), and the reconstructed
+      # MetaAST id (format "ast_node:file_stem_name_line"). dllb can hand back
+      # structured values where a scalar is expected -- e.g. a node whose
+      # `name` is a serialized AST fragment arrives as
+      # %{"Array" => [%{"String" => "{:tuple, ...}"}]} -- so `safe_key/1`
+      # coerces only stringable values and drops the rest. This is what
+      # prevents the "String.Chars not implemented for Map" crash that aborted
+      # graph loading on the dllb backend.
+      [
+        safe_key(n.id),
+        safe_key(dllb_id),
+        bare_ast_node_id(dllb_id),
+        reconstruct_meta_ast_id(data)
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&{&1, human_name})
     end)
     |> Map.new()
   end
@@ -306,18 +302,39 @@ defmodule Rageg.Graph do
   #   "ast_node:<file_stem>_<sanitized_name>_<line>"
   defp reconstruct_meta_ast_id(data) do
     file_path = data[:file_path]
-    name = data[:name]
-    line = data[:line_start] || 0
+    name = to_nil_string(data[:name])
+    line = reconstruct_line(data[:line_start])
 
-    if file_path && name do
+    if is_binary(file_path) and is_binary(name) do
       file_stem =
         file_path
         |> Path.basename()
         |> Path.rootname()
         |> String.replace(~r/[^a-zA-Z0-9_]/, "_")
 
-      sanitized_name = to_string(name) |> String.replace(~r/[^a-zA-Z0-9_]/, "_")
+      sanitized_name = String.replace(name, ~r/[^a-zA-Z0-9_]/, "_")
       "ast_node:#{file_stem}_#{sanitized_name}_#{line}"
+    end
+  end
+
+  defp reconstruct_line(line) when is_integer(line), do: line
+  defp reconstruct_line(_), do: 0
+
+  # Coerces a value into a string lookup key, or nil for shapes (maps, tuples)
+  # that cannot become a key. dllb returns some fields (record ids, and names
+  # that are serialized AST fragments) as structured maps/arrays, which must
+  # never reach String.Chars.to_string/1.
+  defp safe_key(v) when is_binary(v), do: v
+  defp safe_key(v) when is_atom(v) and not is_nil(v), do: Atom.to_string(v)
+  defp safe_key(v) when is_integer(v), do: Integer.to_string(v)
+  defp safe_key(_), do: nil
+
+  # The dllb record id without its "ast_node:" table prefix, or nil when the
+  # id is not a stringable value.
+  defp bare_ast_node_id(id) do
+    case safe_key(id) do
+      nil -> nil
+      key -> String.replace_prefix(key, "ast_node:", "")
     end
   end
 
@@ -331,7 +348,12 @@ defmodule Rageg.Graph do
   defp format_human_name(mod, name, arity), do: "#{mod}.#{name}/#{arity}"
 
   defp to_nil_string(nil), do: nil
-  defp to_nil_string(val), do: to_string(val)
+  defp to_nil_string(val) when is_binary(val), do: val
+  defp to_nil_string(val) when is_atom(val), do: Atom.to_string(val)
+  defp to_nil_string(val) when is_number(val), do: to_string(val)
+  # dllb occasionally returns structured values (maps/lists) where a scalar is
+  # expected; treat those as "no value" instead of crashing on String.Chars.
+  defp to_nil_string(_), do: nil
 
   defp maybe_strip_elixir(nil), do: nil
   defp maybe_strip_elixir(name), do: strip_elixir(name)
@@ -501,9 +523,17 @@ defmodule Rageg.Graph do
     |> Enum.group_by(& &1.community)
     |> Map.delete(nil)
     |> Map.new(fn {community_id, members} ->
-      {to_string(community_id), Enum.map(members, & &1.id)}
+      {community_key(community_id), Enum.map(members, & &1.id)}
     end)
   end
+
+  # Community ids vary by backend (dllb returns strings, the ETS Louvain path
+  # uses node-id tuples), so build a stable string key without assuming the id
+  # implements String.Chars.
+  defp community_key(id) when is_binary(id), do: id
+  defp community_key(id) when is_integer(id), do: Integer.to_string(id)
+  defp community_key(id) when is_atom(id), do: Atom.to_string(id)
+  defp community_key(id), do: inspect(id)
 
   defp build_node_details(node, node_id_string) do
     {type, id} = {node.type, node.id}

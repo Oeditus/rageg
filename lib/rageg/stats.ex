@@ -176,11 +176,27 @@ defmodule Rageg.Stats do
 
     %{
       model: model_name,
-      dimensions: Map.get(vs_stats, :dimensions, 0),
+      dimensions: resolve_dimensions(Map.get(vs_stats, :dimensions, 0)),
       total: Map.get(vs_stats, :total_embeddings, 0)
     }
   rescue
     _ -> %{model: "n/a", dimensions: 0, total: 0}
+  end
+
+  # VectorStore.stats/0 derives dimensions from a sample embedding, which the
+  # dllb backend does not list (so it reports 0). Fall back to the configured
+  # model's dimension from the registry in that case.
+  defp resolve_dimensions(dim) when is_integer(dim) and dim > 0, do: dim
+
+  defp resolve_dimensions(_) do
+    model_id = Application.get_env(:ragex, :embedding_model, Ragex.Embeddings.Registry.default())
+
+    case Ragex.Embeddings.Registry.dimensions(model_id) do
+      {:ok, dim} -> dim
+      _ -> 0
+    end
+  rescue
+    _ -> 0
   end
 
   defp fetch_cache_stats do

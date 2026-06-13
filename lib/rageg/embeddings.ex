@@ -18,7 +18,10 @@ defmodule Rageg.Embeddings do
 
   alias Ragex.Graph.Store
   alias Ragex.Retrieval.Hybrid
+  alias Ragex.Store.Backend
   alias Ragex.VectorStore
+
+  @default_max_points 500
 
   @type point :: %{
           id: String.t(),
@@ -42,10 +45,10 @@ defmodule Rageg.Embeddings do
   """
   @spec fetch_scatter_data(keyword()) :: {:ok, [point()]}
   def fetch_scatter_data(opts \\ []) do
-    max_points = Keyword.get(opts, :max_points, 500)
+    max_points = Keyword.get(opts, :max_points, @default_max_points)
     node_type = Keyword.get(opts, :node_type)
 
-    embeddings = Store.list_embeddings(node_type, max_points)
+    embeddings = list_embeddings(node_type, max_points)
 
     if embeddings == [] do
       {:ok, []}
@@ -84,21 +87,47 @@ defmodule Rageg.Embeddings do
   def search(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
-    case Hybrid.search(query, limit: limit, strategy: :semantic_first) do
-      {:ok, results} ->
-        ids =
-          results
-          |> Enum.map(fn result ->
-            format_id(result.node_type, result.node_id)
-          end)
+    if dllb_backend?() do
+      dllb_search(query, limit)
+    else
+      case Hybrid.search(query, limit: limit, strategy: :semantic_first) do
+        {:ok, results} ->
+          ids =
+            results
+            |> Enum.map(fn result ->
+              format_id(result.node_type, result.node_id)
+            end)
 
-        {:ok, ids}
+          {:ok, ids}
 
-      _ ->
-        {:ok, []}
+        _ ->
+          {:ok, []}
+      end
     end
   rescue
     _ -> {:ok, []}
+  end
+
+  # On the dllb backend the native vector search returns only kind/name (no
+  # module or arity), so its IDs would not match the scatter point IDs. Rank
+  # the sampled embedding set against the query embedding instead, producing
+  # the same `Module.fun/arity` IDs the plot uses so highlighting lines up.
+  defp dllb_search(query, limit) do
+    with {:ok, query_embedding} <- Ragex.Embeddings.Bumblebee.embed(query) do
+      ids =
+        nil
+        |> list_embeddings(@default_max_points)
+        |> Enum.map(fn {type, id, embedding, _text} ->
+          {format_id(type, id), VectorStore.cosine_similarity(query_embedding, embedding)}
+        end)
+        |> Enum.sort_by(fn {_id, score} -> score end, :desc)
+        |> Enum.take(limit)
+        |> Enum.map(fn {id, _score} -> id end)
+
+      {:ok, ids}
+    else
+      _ -> {:ok, []}
+    end
   end
 
   @doc """
@@ -108,18 +137,23 @@ defmodule Rageg.Embeddings do
   """
   @spec nearest_neighbors(String.t(), non_neg_integer()) :: {:ok, [String.t()]}
   def nearest_neighbors(entity_id, k \\ 5) do
-    # Find the embedding for this entity
-    embeddings = Store.list_embeddings(nil, 10_000)
+    # Rank neighbors by cosine similarity within the sampled embedding set.
+    # This works identically for the ETS and dllb backends and, crucially,
+    # yields IDs in the same `Module.fun/arity` shape as the scatter points so
+    # the client can draw connector lines to the displayed neighbors.
+    embeddings = list_embeddings(nil, @default_max_points)
 
     case Enum.find(embeddings, fn {type, id, _emb, _text} -> format_id(type, id) == entity_id end) do
-      {_type, _id, embedding, _text} ->
-        results = VectorStore.nearest_neighbors(embedding, k + 1)
-
+      {_type, _id, source_embedding, _text} ->
         ids =
-          results
-          |> Enum.map(fn result -> format_id(result.node_type, result.node_id) end)
-          |> Enum.reject(&(&1 == entity_id))
+          embeddings
+          |> Enum.map(fn {type, id, embedding, _text} ->
+            {format_id(type, id), VectorStore.cosine_similarity(source_embedding, embedding)}
+          end)
+          |> Enum.reject(fn {id, _score} -> id == entity_id end)
+          |> Enum.sort_by(fn {_id, score} -> score end, :desc)
           |> Enum.take(k)
+          |> Enum.map(fn {id, _score} -> id end)
 
         {:ok, ids}
 
@@ -133,14 +167,51 @@ defmodule Rageg.Embeddings do
   @doc "Returns embedding space statistics."
   @spec stats() :: map()
   def stats do
-    vs = VectorStore.stats()
+    vs =
+      case VectorStore.stats() do
+        s when is_map(s) -> s
+        _ -> %{}
+      end
 
     %{
       total: Map.get(vs, :total_embeddings, 0),
-      dimensions: Map.get(vs, :dimensions, 0)
+      dimensions: resolve_dimensions(Map.get(vs, :dimensions, 0))
     }
   rescue
     _ -> %{total: 0, dimensions: 0}
+  end
+
+  # Selects the embedding source for the active store backend. The dllb store
+  # backend does not list embeddings (it returns []), so pull a capped sample
+  # straight from dllb; otherwise use the in-memory ETS store.
+  defp list_embeddings(node_type, limit) do
+    if dllb_backend?() do
+      Rageg.Dllb.list_embeddings(node_type, limit)
+    else
+      Store.list_embeddings(node_type, limit)
+    end
+  end
+
+  defp dllb_backend? do
+    Backend.module() == Backend.Dllb
+  rescue
+    _ -> false
+  end
+
+  # VectorStore.stats/0 derives dimensions from a sample embedding, which the
+  # dllb backend does not list (so it reports 0). Fall back to the configured
+  # model's dimension from the registry in that case.
+  defp resolve_dimensions(dim) when is_integer(dim) and dim > 0, do: dim
+
+  defp resolve_dimensions(_) do
+    model_id = Application.get_env(:ragex, :embedding_model, Ragex.Embeddings.Registry.default())
+
+    case Ragex.Embeddings.Registry.dimensions(model_id) do
+      {:ok, dim} -> dim
+      _ -> 0
+    end
+  rescue
+    _ -> 0
   end
 
   # -- Private: 2D projection via PCA --

@@ -14,6 +14,10 @@ defmodule Rageg.Dllb do
   # SurrealDB-style RELATE edge tables that must be wiped on full reset.
   @edge_tables ~w[calls contains imports type_ref inherits defines]
 
+  # Default cap on how many embedding rows to sample from dllb at once. The
+  # backend deliberately never streams every vector, so callers take a sample.
+  @embedding_sample_limit 1_000
+
   @doc "Returns true if dllb pool is enabled and reachable."
   @spec connected?() :: boolean()
   def connected? do
@@ -146,6 +150,46 @@ defmodule Rageg.Dllb do
     Dllb.query(query_string)
   rescue
     e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Returns a capped sample of stored embeddings straight from dllb.
+
+  The dllb store backend in Ragex deliberately does not list embeddings
+  (`Ragex.Graph.Store.list_embeddings/2` returns `[]` under it) to avoid
+  streaming every vector over the wire. This selects `ast_node` rows that
+  carry a `source_embedding` and normalizes them into the same
+  `{node_type, node_id, embedding, text}` tuples the ETS backend produces, so
+  callers (e.g. the Embedding Space view) can treat both backends uniformly.
+
+  `node_type` is `:function` or `:module`; `node_id` is `{module, name, arity}`
+  for functions and the module name for modules, matching the
+  `Module.fun/arity` identifiers used elsewhere in the UI. An optional
+  `node_type` filter (`:function` or `:module`) scopes the sample server-side.
+
+  Returns `[]` if dllb is unreachable or the query fails.
+  """
+  @spec list_embeddings(:function | :module | nil, pos_integer()) ::
+          [{:function | :module, term(), [float()], String.t()}]
+  def list_embeddings(node_type \\ nil, limit \\ @embedding_sample_limit) do
+    query_string =
+      Dllb.Query.select("ast_node",
+        fields: ~w[id kind name module arity source_text source_embedding],
+        where: embedding_where(node_type),
+        limit: limit
+      )
+
+    case Dllb.query(query_string) do
+      {:ok, %Dllb.Result.Rows{data: rows}} ->
+        rows
+        |> Enum.map(&row_to_embedding/1)
+        |> Enum.reject(&is_nil/1)
+
+      _ ->
+        []
+    end
+  rescue
+    _ -> []
   end
 
   @doc """
@@ -322,4 +366,53 @@ defmodule Rageg.Dllb do
       {"defines", "Module -> function definition edges"}
     ]
   end
+
+  # -- Private: embedding sampling --
+
+  # Restricts the sample to rows that actually carry a vector, optionally
+  # scoped to the kind backing a given node type.
+  defp embedding_where(:function), do: "kind = 'function_def' AND source_embedding IS NOT NONE"
+  defp embedding_where(:module), do: "kind = 'container' AND source_embedding IS NOT NONE"
+  defp embedding_where(_), do: "source_embedding IS NOT NONE"
+
+  # Normalizes a raw dllb row into the ETS-compatible embedding tuple, or nil
+  # for rows without a usable vector or a recognized kind.
+  defp row_to_embedding(row) do
+    embedding = unwrap_vector(row["source_embedding"])
+
+    case {unwrap(row["kind"]), embedding} do
+      {_kind, []} ->
+        nil
+
+      {"function_def", emb} ->
+        node_id = {unwrap(row["module"]), unwrap(row["name"]), unwrap(row["arity"])}
+        {:function, node_id, emb, unwrap(row["source_text"]) || ""}
+
+      {"container", emb} ->
+        {:module, unwrap(row["name"]), emb, unwrap(row["source_text"]) || ""}
+
+      _ ->
+        nil
+    end
+  end
+
+  # dllb serde-tags scalar values by variant: %{"String" => v}, %{"Int" => n}, ...
+  # `Value::None` serializes to the bare string "None".
+  defp unwrap(%{"String" => v}), do: v
+  defp unwrap(%{"Int" => v}), do: v
+  defp unwrap(%{"Float" => v}), do: v
+  defp unwrap(%{"Bool" => v}), do: v
+  defp unwrap("None"), do: nil
+  defp unwrap(v), do: v
+
+  # Vectors arrive as %{"Array" => [%{"Float" => f}, ...]} (or a bare list).
+  # Returns a plain list of floats, or [] for anything else.
+  defp unwrap_vector(%{"Array" => list}) when is_list(list), do: Enum.map(list, &unwrap_float/1)
+  defp unwrap_vector(list) when is_list(list), do: Enum.map(list, &unwrap_float/1)
+  defp unwrap_vector(_), do: []
+
+  defp unwrap_float(%{"Float" => v}) when is_number(v), do: v * 1.0
+  defp unwrap_float(%{"Int" => v}) when is_number(v), do: v * 1.0
+  defp unwrap_float(v) when is_number(v), do: v * 1.0
+  defp unwrap_float(_), do: 0.0
 end

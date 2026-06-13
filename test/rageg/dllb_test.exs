@@ -69,4 +69,12 @@ defmodule Rageg.DllbTest do
       refute Dllb.connected?()
     end
   end
+
+  describe "list_embeddings/2" do
+    test "returns a list, degrading to [] when dllb is unavailable" do
+      assert is_list(Dllb.list_embeddings())
+      assert is_list(Dllb.list_embeddings(:function, 10))
+      assert is_list(Dllb.list_embeddings(:module, 10))
+    end
+  end
 end
