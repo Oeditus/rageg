@@ -49,9 +49,18 @@ defmodule RagegWeb.DependenciesLive do
     items = fetch_tab_data(tab)
     summary = Dependencies.summary()
 
-    {:noreply,
-     socket
-     |> assign(items: items, loading: false, summary: summary, active_tab: tab)}
+    socket =
+      socket
+      |> assign(items: items, loading: false, summary: summary, active_tab: tab)
+
+    socket =
+      if tab == :circular and items != [] do
+        push_event(socket, "circular_cycles", %{cycles: items})
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
@@ -159,7 +168,21 @@ defmodule RagegWeb.DependenciesLive do
       <.icon name="hero-check-circle" class="size-12 mx-auto mb-2 text-success/40" />
       <p>{gettext("No circular dependencies detected")}</p>
     </div>
-    <div :if={@items != []} class="space-y-3">
+    <div :if={@items != []} class="space-y-4">
+      <%!-- D3 Interactive Cycle Graph --%>
+      <div class="card bg-base-200 shadow-sm overflow-hidden">
+        <div class="card-body p-4">
+          <h3 class="card-title text-sm mb-2">{gettext("Cycle Interaction Map")}</h3>
+          <div
+            id="cycle-chart-container"
+            phx-hook="CycleChartHook"
+            phx-update="ignore"
+            class="w-full h-80 bg-base-100 rounded-box border border-base-300 relative overflow-hidden"
+          >
+          </div>
+        </div>
+      </div>
+
       <div :for={{cycle, idx} <- Enum.with_index(@items, 1)} class="card bg-base-200 shadow-sm">
         <div class="card-body p-4">
           <h3 class="card-title text-sm">

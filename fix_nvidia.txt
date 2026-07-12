@@ -1,0 +1,10 @@
+### Next time this happens
+
+If EXLA segfaults right after a driver/CUDA update:
+•  If nvidia-smi shows Driver/library version mismatch → reload the NVIDIA modules or reboot (kernel module must match userspace).
+•  Otherwise check the extension: file deps/exla/cache/xla_extension/lib/libxla_extension.so. If it says "missing section headers" (or ldd prints nothing), re-extract:
+    
+    rm -rf deps/exla/cache/xla_extension
+    tar -xzf ~/.cache/xla/0.10.0/download/xla_extension-0.10.0-x86_64-linux-gnu-cuda13.tar.gz -C deps/exla/cache/
+  
+Avoid interrupting mix deps.compile mid-extraction, which is what corrupted it.

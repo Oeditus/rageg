@@ -32,11 +32,13 @@ window.d3 = d3
 // Custom LiveView hooks
 import createGraphHook from "./hooks/graph_hook"
 import createScatterHook from "./hooks/scatter_hook"
+import createCycleChartHook from "./hooks/cycle_chart_hook"
 
 const Hooks = {
   ...colocatedHooks,
   GraphHook: createGraphHook(),
   ScatterHook: createScatterHook(),
+  CycleChartHook: createCycleChartHook(),
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

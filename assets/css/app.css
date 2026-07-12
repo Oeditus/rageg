@@ -103,3 +103,80 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* Diff styles */
+.diff {
+  background-color: oklch(var(--b1));
+  border: 1px solid oklch(var(--b3));
+  border-radius: var(--radius-box, 0.5rem);
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+.diff-header {
+  background-color: oklch(var(--b2));
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid oklch(var(--b3));
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.diff-header .old-file {
+  color: oklch(var(--er));
+}
+.diff-header .new-file {
+  color: oklch(var(--su));
+}
+.diff-chunk {
+  border-bottom: 1px solid oklch(var(--b3));
+}
+.diff-chunk:last-child {
+  border-bottom: none;
+}
+.chunk-header {
+  background-color: oklch(var(--b2) / 0.5);
+  color: oklch(var(--bc) / 0.5);
+  padding: 0.25rem 1rem;
+  font-size: 0.75rem;
+}
+.chunk-lines {
+  margin: 0;
+  padding: 0.5rem 0;
+  overflow-x: auto;
+  background-color: oklch(var(--b1));
+}
+.line {
+  display: block;
+  padding: 0 1rem;
+  white-space: pre;
+}
+.line.eq {
+  color: oklch(var(--bc));
+}
+.line.del {
+  background-color: oklch(var(--er) / 0.15);
+  color: oklch(var(--er));
+}
+.line.ins {
+  background-color: oklch(var(--su) / 0.15);
+  color: oklch(var(--su));
+}
+.diff-stats {
+  background-color: oklch(var(--b2));
+  padding: 0.5rem 1rem;
+  border-top: 1px solid oklch(var(--b3));
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.diff-stats .additions {
+  color: oklch(var(--su));
+}
+.diff-stats .deletions {
+  color: oklch(var(--er));
+}
