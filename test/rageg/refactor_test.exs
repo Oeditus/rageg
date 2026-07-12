@@ -4,10 +4,10 @@ defmodule Rageg.RefactorTest do
   alias Rageg.Refactor
 
   describe "operations/0" do
-    test "returns 6 operations with name, label, icon, description" do
+    test "returns 9 operations with name, label, icon, description" do
       ops = Refactor.operations()
 
-      assert [_, _, _, _, _, _] = ops
+      assert [_, _, _, _, _, _, _, _, _] = ops
 
       for {_key, label, icon, desc} <- ops do
         assert is_binary(label)

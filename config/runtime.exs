@@ -22,6 +22,11 @@ end
 
 config :rageg, RagegWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Ragex AI provider API key(s). Never commit keys; read them from the environment.
+# `Ragex.AI.Config` looks these up under `:ai_keys` keyed by provider name
+# (`:deepseek_r1`), so `DEEPSEEK_API_KEY` must be exported where the server runs.
+config :ragex, :ai_keys, deepseek_r1: System.get_env("DEEPSEEK_API_KEY")
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

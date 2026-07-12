@@ -208,13 +208,25 @@ defmodule RagegWeb.AuditLive do
         <%!-- Report content --%>
         <div class="card bg-base-200 shadow-sm">
           <div class="card-body p-6 prose prose-sm max-w-none">
-            <div class="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-              {@report}
-            </div>
+            {render_markdown(@report)}
           </div>
         </div>
       </div>
     </div>
     """
+  end
+
+  defp render_markdown(text) do
+    case Code.ensure_loaded(MDEx) do
+      {:module, MDEx} ->
+        try do
+          MDEx.to_html!(text) |> Phoenix.HTML.raw()
+        rescue
+          _ -> text
+        end
+
+      _ ->
+        text
+    end
   end
 end

@@ -281,8 +281,8 @@ defmodule RagegWeb.ChatLive do
   defp message_bubble(%{message: %{role: :assistant}} = assigns) do
     ~H"""
     <div class="chat chat-start">
-      <div class="chat-bubble chat-bubble-primary whitespace-pre-wrap text-sm">
-        {@message.content}
+      <div class="chat-bubble chat-bubble-primary text-sm prose prose-sm prose-invert max-w-none">
+        {render_markdown(@message.content)}
       </div>
     </div>
     """
@@ -296,5 +296,21 @@ defmodule RagegWeb.ChatLive do
       </div>
     </div>
     """
+  end
+
+  defp render_markdown(nil), do: ""
+
+  defp render_markdown(text) do
+    case Code.ensure_loaded(MDEx) do
+      {:module, MDEx} ->
+        try do
+          MDEx.to_html!(text) |> Phoenix.HTML.raw()
+        rescue
+          _ -> text
+        end
+
+      _ ->
+        text
+    end
   end
 end
