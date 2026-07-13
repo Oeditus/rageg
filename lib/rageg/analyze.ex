@@ -11,7 +11,7 @@ defmodule Rageg.Analyze do
   Analysis results are cached via `Ragex.Analysis.Cache`.
   """
 
-  alias Ragex.Analysis.{Cache, Runner}
+  alias Ragex.Analysis.{Cache, LocationEnricher, Runner}
   alias Ragex.Embeddings.Persistence, as: EmbeddingsPersistence
   alias Ragex.Graph.Persistence, as: GraphPersistence
   alias Ragex.Graph.Store
@@ -127,6 +127,10 @@ defmodule Rageg.Analyze do
 
         analysis_labels = Map.new(analysis_types(), fn {key, label, _} -> {key, label} end)
 
+        # Clear any stale LocationEnricher caches before running analysis
+        # so the per-process file→functions index is rebuilt fresh.
+        LocationEnricher.clear_cache()
+
         results =
           Runner.run_all(config,
             on_progress: fn key, phase ->
@@ -138,6 +142,9 @@ defmodule Rageg.Analyze do
               end
             end
           )
+
+        # Free memory held by the LocationEnricher cache.
+        LocationEnricher.clear_cache()
 
         # Persist caches so the next run can skip unchanged work.
         on_progress.("Saving caches...")

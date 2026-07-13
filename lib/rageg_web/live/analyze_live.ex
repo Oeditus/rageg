@@ -30,6 +30,7 @@ defmodule RagegWeb.AnalyzeLive do
      |> assign(project_path: active_path)
      |> assign(analyses: analyses)
      |> assign(running: false)
+     |> assign(task_pid: nil)
      |> assign(progress: [])
      |> assign(results: nil)
      |> assign(index_result: nil)
@@ -56,18 +57,38 @@ defmodule RagegWeb.AnalyzeLive do
       pid = self()
       analyses = socket.assigns.analyses
 
-      Task.start(fn ->
-        result =
-          Analyze.run(path,
-            analyses: analyses,
-            on_progress: fn msg -> send(pid, {:progress, msg}) end
-          )
+      {:ok, task_pid} =
+        Task.start(fn ->
+          result =
+            Analyze.run(path,
+              analyses: analyses,
+              on_progress: fn msg -> send(pid, {:progress, msg}) end
+            )
 
-        send(pid, {:analysis_complete, result})
-      end)
+          send(pid, {:analysis_complete, result})
+        end)
 
-      {:noreply, assign(socket, running: true, error: nil, results: nil, progress: [])}
+      ref = Process.monitor(task_pid)
+
+      {:noreply,
+       assign(socket,
+         running: true,
+         task_pid: task_pid,
+         task_ref: ref,
+         error: nil,
+         results: nil,
+         progress: []
+       )}
     end
+  end
+
+  def handle_event("cancel_analysis", _params, socket) do
+    if pid = socket.assigns.task_pid do
+      Process.exit(pid, :kill)
+    end
+
+    progress = socket.assigns.progress ++ ["Analysis cancelled by user"]
+    {:noreply, assign(socket, running: false, task_pid: nil, progress: progress)}
   end
 
   @impl Phoenix.LiveView
@@ -86,6 +107,7 @@ defmodule RagegWeb.AnalyzeLive do
      socket
      |> assign(
        running: false,
+       task_pid: nil,
        results: result.results,
        index_result: result.index,
        error: nil
@@ -93,7 +115,25 @@ defmodule RagegWeb.AnalyzeLive do
   end
 
   def handle_info({:analysis_complete, {:error, reason}}, socket) do
-    {:noreply, assign(socket, running: false, error: to_string(reason))}
+    {:noreply, assign(socket, running: false, task_pid: nil, error: to_string(reason))}
+  end
+
+  # Handle task exit (crash, cancel, or normal termination)
+  def handle_info({:DOWN, _ref, :process, _pid, :normal}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, :killed}, socket) do
+    {:noreply, assign(socket, running: false, task_pid: nil)}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       running: false,
+       task_pid: nil,
+       error: "Analysis process crashed: #{inspect(reason)}"
+     )}
   end
 
   @impl Phoenix.LiveView
@@ -169,10 +209,19 @@ defmodule RagegWeb.AnalyzeLive do
       <%!-- Progress --%>
       <div :if={@running} class="card bg-base-200 shadow-sm">
         <div class="card-body p-4">
-          <h2 class="card-title text-sm gap-2">
-            <span class="loading loading-spinner loading-sm text-primary"></span>
-            {gettext("Progress")}
-          </h2>
+          <div class="flex items-center justify-between">
+            <h2 class="card-title text-sm gap-2">
+              <span class="loading loading-spinner loading-sm text-primary"></span>
+              {gettext("Progress")}
+            </h2>
+            <button
+              class="btn btn-sm btn-error btn-outline gap-1"
+              phx-click="cancel_analysis"
+            >
+              <.icon name="hero-x-mark" class="size-4" />
+              {gettext("Cancel")}
+            </button>
+          </div>
           <ul class="mt-2 space-y-1">
             <li :for={msg <- @progress} class="text-xs text-base-content/70 flex items-center gap-2">
               <.icon name="hero-check" class="size-3 text-success" />
