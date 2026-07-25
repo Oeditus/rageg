@@ -71,6 +71,12 @@ defmodule RagegWeb.Router do
 
       # Phase 8: Analysis Runner
       live "/analyze", AnalyzeLive, :index
+
+      # Phase 9: PR/Branch Assessment
+      live "/assess", AssessLive, :index
+
+      # Configuration
+      live "/configuration", ConfigurationLive, :index
     end
   end
 end

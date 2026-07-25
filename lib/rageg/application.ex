@@ -15,6 +15,9 @@ defmodule Rageg.Application do
     # triggers tensor compilation or model loading.
     Rageg.NxBackend.setup()
 
+    # Load AI Keys and dynamic provider configuration
+    Rageg.AIKeys.load_keys()
+
     # Attach Logger-backed telemetry handlers
     Rageg.Profiles.IngestTelemetry.attach()
     Rageg.Graph.Telemetry.attach()

@@ -181,15 +181,11 @@ defmodule Rageg.Embeddings do
     _ -> %{total: 0, dimensions: 0}
   end
 
-  # Selects the embedding source for the active store backend. The dllb store
-  # backend does not list embeddings (it returns []), so pull a capped sample
-  # straight from dllb; otherwise use the in-memory ETS store.
+  # Selects the embedding source for the active store backend. Since both the
+  # ETS and Dllb store backends now natively implement list_embeddings/2, we
+  # delegate directly to the active backend.
   defp list_embeddings(node_type, limit) do
-    if dllb_backend?() do
-      Rageg.Dllb.list_embeddings(node_type, limit)
-    else
-      Store.list_embeddings(node_type, limit)
-    end
+    Store.list_embeddings(node_type, limit)
   end
 
   defp dllb_backend? do

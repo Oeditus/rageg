@@ -22,10 +22,66 @@ end
 
 config :rageg, RagegWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-# Ragex AI provider API key(s). Never commit keys; read them from the environment.
-# `Ragex.AI.Config` looks these up under `:ai_keys` keyed by provider name
-# (`:deepseek_r1`), so `DEEPSEEK_API_KEY` must be exported where the server runs.
-config :ragex, :ai_keys, deepseek_r1: System.get_env("DEEPSEEK_API_KEY")
+# Ragex AI provider configuration.
+# `Ragex.AI.Config` reads configuration from `:ai` and `:ai_providers`, and keys from `:ai_keys`.
+# All of these are configured dynamically here to avoid compile-time bindings.
+default_provider =
+  case System.get_env("RAGEX_DEFAULT_PROVIDER") do
+    "openai" -> :openai
+    "anthropic" -> :anthropic
+    "ollama" -> :ollama
+    _ -> :deepseek_r1
+  end
+
+# Build list of active/configured providers at runtime.
+# By default, deepseek_r1 is always included. Other providers are included if
+# their corresponding API keys or endpoints are configured.
+providers =
+  [:deepseek_r1]
+  |> then(fn list -> if System.get_env("OPENAI_API_KEY"), do: [:openai | list], else: list end)
+  |> then(fn list ->
+    if System.get_env("ANTHROPIC_API_KEY"), do: [:anthropic | list], else: list
+  end)
+  |> then(fn list ->
+    if System.get_env("OLLAMA_API_ENDPOINT") || default_provider == :ollama,
+      do: [:ollama | list],
+      else: list
+  end)
+  |> Enum.uniq()
+  |> then(fn list -> [default_provider | list] end)
+  |> Enum.uniq()
+
+config :ragex, :ai,
+  providers: providers,
+  default_provider: default_provider,
+  fallback_enabled: false
+
+config :ragex, :ai_providers,
+  deepseek_r1: [
+    endpoint: System.get_env("DEEPSEEK_API_ENDPOINT", "https://api.deepseek.com"),
+    model: System.get_env("DEEPSEEK_MODEL", "deepseek-chat"),
+    options: [temperature: 0.7, max_tokens: 2048, stream: false]
+  ],
+  openai: [
+    endpoint: System.get_env("OPENAI_API_ENDPOINT", "https://api.openai.com/v1"),
+    model: System.get_env("OPENAI_MODEL", "gpt-4-turbo"),
+    options: [temperature: 0.7, max_tokens: 2048, stream: false]
+  ],
+  anthropic: [
+    endpoint: System.get_env("ANTHROPIC_API_ENDPOINT", "https://api.anthropic.com/v1"),
+    model: System.get_env("ANTHROPIC_MODEL", "claude-3-sonnet-20240229"),
+    options: [temperature: 0.7, max_tokens: 2048]
+  ],
+  ollama: [
+    endpoint: System.get_env("OLLAMA_API_ENDPOINT", "http://localhost:11434"),
+    model: System.get_env("OLLAMA_MODEL", "codellama"),
+    options: [temperature: 0.7, max_tokens: 2048]
+  ]
+
+config :ragex, :ai_keys,
+  deepseek_r1: System.get_env("DEEPSEEK_API_KEY"),
+  openai: System.get_env("OPENAI_API_KEY"),
+  anthropic: System.get_env("ANTHROPIC_API_KEY")
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

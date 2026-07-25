@@ -43,23 +43,8 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
-# Ragex AI provider configuration.
-# `Ragex.AI.Config` reads `endpoint`/`model` from `:ai_providers` and the API key
-# from `:ai_keys` (wired from the environment in config/runtime.exs). Dependency
-# config is not loaded transitively, so these must live in this app. Without an
-# endpoint the DeepSeek request URL becomes "/chat/completions" and Finch raises
-# "scheme is required for url".
-config :ragex, :ai,
-  providers: [:deepseek_r1],
-  default_provider: :deepseek_r1,
-  fallback_enabled: false
-
-config :ragex, :ai_providers,
-  deepseek_r1: [
-    endpoint: "https://api.deepseek.com",
-    model: "deepseek-chat",
-    options: [temperature: 0.7, max_tokens: 2048, stream: false]
-  ]
+# Ragex AI provider configuration and keys are loaded dynamically at runtime
+# in config/runtime.exs to avoid compile-time environment variable bindings.
 
 # Nx/EXLA backend is selected at runtime by Rageg.NxBackend (see lib/rageg/nx_backend.ex):
 # dev/prod prefer CUDA with automatic CPU fallback, test forces :host. The preference
