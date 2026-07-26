@@ -66,12 +66,12 @@ defmodule Rageg.Profiles.DllbIngestor do
     e -> {:error, Exception.message(e)}
   end
 
+  @schema_marker "~/.rageg/.dllb_bootstrapped"
+
   # -- Private --
 
   defp do_ingest(path, project_tag, on_progress, batch_size, force?) do
-    already_bootstrapped? = :persistent_term.get({:rageg_dllb, :schema_bootstrapped}, false)
-
-    if force? or not already_bootstrapped? do
+    if force? or not schema_bootstrapped?() do
       on_progress.("Bootstrapping dllb schema...")
 
       IngestTelemetry.span(:bootstrap, %{}, fn ->
@@ -156,17 +156,43 @@ defmodule Rageg.Profiles.DllbIngestor do
     )
   end
 
+  defp schema_bootstrapped? do
+    if :persistent_term.get({:rageg_dllb, :schema_bootstrapped}, false) do
+      true
+    else
+      marker = Path.expand(@schema_marker)
+
+      if File.exists?(marker) do
+        :persistent_term.put({:rageg_dllb, :schema_bootstrapped}, true)
+        true
+      else
+        false
+      end
+    end
+  end
+
+  defp mark_schema_bootstrapped do
+    :persistent_term.put({:rageg_dllb, :schema_bootstrapped}, true)
+    marker = Path.expand(@schema_marker)
+    File.mkdir_p!(Path.dirname(marker))
+    File.write!(marker, "bootstrapped")
+  rescue
+    _ -> :ok
+  end
+
   defp bootstrap_schema! do
     case Dllb.Schema.bootstrap(&Dllb.query/1) do
-      {:ok, :bootstrapped} ->
-        :persistent_term.put({:rageg_dllb, :schema_bootstrapped}, true)
+      {:ok, _} ->
+        mark_schema_bootstrapped()
         :ok
 
       {:error, reason} ->
         Logger.warning("Schema bootstrap issue: #{inspect(reason)}")
     end
   rescue
-    _ -> :ok
+    e ->
+      Logger.warning("Schema bootstrap exception: #{inspect(e)}")
+      :ok
   end
 
   defp ingest_one(file_path, language, project_tag, _batch_size) do

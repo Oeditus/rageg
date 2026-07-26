@@ -19,6 +19,8 @@ defmodule RagegWeb.MetacredoLive do
         _ -> ""
       end
 
+    cached_result = Metacredo.get_cached_result(active_path)
+
     {:ok,
      socket
      |> assign(page_title: gettext("MetaCredo Analysis"))
@@ -28,7 +30,7 @@ defmodule RagegWeb.MetacredoLive do
      |> assign(selected_category: "all")
      |> assign(search_query: "")
      |> assign(running: false)
-     |> assign(result: nil)
+     |> assign(result: cached_result)
      |> assign(error: nil)}
   end
 
@@ -75,7 +77,8 @@ defmodule RagegWeb.MetacredoLive do
   @impl Phoenix.LiveView
   def handle_info({:rageg_profile_changed, profile}, socket) do
     path = (profile && profile.path) || ""
-    {:noreply, assign(socket, project_path: path, result: nil, error: nil)}
+    cached_result = Metacredo.get_cached_result(path)
+    {:noreply, assign(socket, project_path: path, result: cached_result, error: nil)}
   end
 
   def handle_info({:analysis_complete, {:ok, result}}, socket) do
@@ -236,10 +239,11 @@ defmodule RagegWeb.MetacredoLive do
 
         <div :if={filtered != []} class="space-y-3" id="metacredo-issues-list">
           <div
-            :for={issue <- filtered}
+            :for={{issue, idx} <- Enum.with_index(filtered)}
             class="card bg-base-200 border border-base-300 hover:border-primary/50 transition-colors shadow-xs"
+            id={"metacredo-issue-#{idx}"}
           >
-            <div class="card-body p-4 space-y-2">
+            <div class="card-body p-4 space-y-3">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
                   <span class={["badge badge-sm font-semibold capitalize", severity_badge_class(issue.severity)]}>
@@ -264,6 +268,30 @@ defmodule RagegWeb.MetacredoLive do
 
               <div :if={issue.trigger} class="bg-base-300 rounded p-2 text-xs font-mono text-base-content/80 overflow-x-auto">
                 <code>{issue.trigger}</code>
+              </div>
+
+              <%!-- Code Snippet with target line highlighted --%>
+              <div :if={issue.snippet} class="bg-base-300/80 rounded-lg p-3 text-xs font-mono border border-base-300 space-y-1 overflow-x-auto">
+                <div class="text-base-content/50 text-[10px] uppercase font-semibold mb-1.5 flex items-center gap-1">
+                  <.icon name="hero-code-bracket" class="size-3 text-primary" />
+                  <span>{issue.filename}:{issue.line_no}</span>
+                </div>
+                <div :for={line <- issue.snippet.lines} class={[
+                  "flex items-start gap-3 px-2 py-0.5 rounded transition-colors",
+                  if(line.is_target, do: "bg-warning/20 text-warning-content font-bold border-l-2 border-warning", else: "text-base-content/70")
+                ]}>
+                  <span class="w-8 text-right select-none text-base-content/40 shrink-0 font-mono">{line.line_no}</span>
+                  <pre class="font-mono whitespace-pre overflow-x-auto"><code>{line.content}</code></pre>
+                </div>
+              </div>
+
+              <%!-- Fix Suggestion --%>
+              <div :if={issue.suggestion} class="bg-primary/5 rounded-lg p-2.5 text-xs border border-primary/20 flex items-start gap-2 text-base-content/90">
+                <.icon name="hero-light-bulb" class="size-4 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <span class="font-bold text-primary mr-1">{gettext("Suggested Fix")}:</span>
+                  <span>{issue.suggestion}</span>
+                </div>
               </div>
             </div>
           </div>
