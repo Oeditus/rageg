@@ -96,23 +96,27 @@ defmodule Rageg.Assess do
             branch
         end
 
-      on_progress.("Diffing #{base}...#{head}")
+      fetch_remote(repo_root)
+      resolved_base = resolve_ref_or_original(repo_root, base)
+      resolved_head = resolve_ref_or_original(repo_root, head)
 
-      case get_changed_files(repo_root, base, head) do
+      on_progress.("Diffing #{resolved_base}...#{resolved_head}")
+
+      case get_changed_files(repo_root, resolved_base, resolved_head) do
         {:ok, []} ->
           {:ok,
            %{
-             report: "No files changed between `#{base}` and `#{head}`.",
+             report: "No files changed between `#{resolved_base}` and `#{resolved_head}`.",
              changed_files: [],
              summary: %{total_issues: 0},
              format: format,
-             base: base,
-             head: head
+             base: resolved_base,
+             head: resolved_head
            }}
 
         {:ok, changed_files} ->
           on_progress.("#{length(changed_files)} file(s) changed")
-          do_assess(repo_root, base, head, changed_files, format, on_progress, opts)
+          do_assess(repo_root, resolved_base, resolved_head, changed_files, format, on_progress, opts)
 
         {:error, reason} ->
           {:error, "Failed to resolve changed files: #{inspect(reason)}"}
@@ -271,6 +275,36 @@ defmodule Rageg.Assess do
   end
 
   # -- Git helpers --
+
+  # Silently fetch origin so remote tracking branches are available locally.
+  defp fetch_remote(repo_root) do
+    System.cmd("git", ["fetch", "--quiet", "origin"], cd: repo_root, stderr_to_stdout: true)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  # Verifies a ref exists. If not, tries prefixing with "origin/" (handles the
+  # common case of a user entering a bare remote branch name like
+  # "feature/foo" instead of "origin/feature/foo"). Falls back to the original
+  # string if neither resolves, letting git produce the error message.
+  defp resolve_ref_or_original(repo_root, ref) do
+    case System.cmd("git", ["rev-parse", "--verify", ref], cd: repo_root, stderr_to_stdout: true) do
+      {_, 0} ->
+        ref
+
+      _ ->
+        remote_ref = "origin/#{ref}"
+
+        case System.cmd("git", ["rev-parse", "--verify", remote_ref],
+               cd: repo_root,
+               stderr_to_stdout: true
+             ) do
+          {_, 0} -> remote_ref
+          _ -> ref
+        end
+    end
+  end
 
   defp get_changed_files(repo_root, base, head) do
     args = ["diff", "--name-only", "--diff-filter=ACMR", "#{base}...#{head}"]
