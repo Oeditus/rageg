@@ -56,6 +56,7 @@ defmodule RagegWeb.Router do
       # Phase 5: Visual Refactoring & Impact
       live "/refactor", RefactorLive, :index
       live "/impact", ImpactLive, :index
+      live "/metacredo", MetacredoLive, :index
 
       # Phase 6: Embedding Space
       live "/embeddings", EmbeddingsLive, :index

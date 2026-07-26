@@ -69,11 +69,15 @@ defmodule Rageg.Profiles.DllbIngestor do
   # -- Private --
 
   defp do_ingest(path, project_tag, on_progress, batch_size, force?) do
-    on_progress.("Bootstrapping dllb schema...")
+    already_bootstrapped? = :persistent_term.get({:rageg_dllb, :schema_bootstrapped}, false)
 
-    IngestTelemetry.span(:bootstrap, %{}, fn ->
-      bootstrap_schema!()
-    end)
+    if force? or not already_bootstrapped? do
+      on_progress.("Bootstrapping dllb schema...")
+
+      IngestTelemetry.span(:bootstrap, %{}, fn ->
+        bootstrap_schema!()
+      end)
+    end
 
     all_files =
       IngestTelemetry.span_with_meta(:discovery, %{path: path}, fn ->
@@ -154,8 +158,12 @@ defmodule Rageg.Profiles.DllbIngestor do
 
   defp bootstrap_schema! do
     case Dllb.Schema.bootstrap(&Dllb.query/1) do
-      {:ok, :bootstrapped} -> :ok
-      {:error, reason} -> Logger.warning("Schema bootstrap issue: #{inspect(reason)}")
+      {:ok, :bootstrapped} ->
+        :persistent_term.put({:rageg_dllb, :schema_bootstrapped}, true)
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Schema bootstrap issue: #{inspect(reason)}")
     end
   rescue
     _ -> :ok

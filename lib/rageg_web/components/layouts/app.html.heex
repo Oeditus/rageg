@@ -121,6 +121,12 @@
           </.link>
         </li>
         <li>
+          <.link navigate={~p"/metacredo"} class={nav_active(assigns[:current_path] || "/", "/metacredo")}>
+            <.icon name="hero-check-badge" class="size-4" />
+            {gettext("MetaCredo Analysis")}
+          </.link>
+        </li>
+        <li>
           <.link navigate={~p"/chat"} class={nav_active(assigns[:current_path] || "/", "/chat")}>
             <.icon name="hero-chat-bubble-left-right" class="size-4" />
             {gettext("RAG Chat")}

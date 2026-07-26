@@ -54,15 +54,30 @@ defmodule RagegWeb.AssessLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("update_base", %{"base" => base}, socket) do
+  def handle_event("form_change", params, socket) do
+    base = Map.get(params, "base", socket.assigns.base_ref)
+    head = Map.get(params, "head", socket.assigns.head_branch)
+    format = Map.get(params, "format", socket.assigns.format)
+
+    {:noreply,
+     socket
+     |> assign(base_ref: base)
+     |> assign(head_branch: head)
+     |> assign(format: format)}
+  end
+
+  def handle_event("update_base", params, socket) do
+    base = Map.get(params, "base", Map.get(params, "value", socket.assigns.base_ref))
     {:noreply, assign(socket, base_ref: base)}
   end
 
-  def handle_event("select_head", %{"head" => head}, socket) do
+  def handle_event("select_head", params, socket) do
+    head = Map.get(params, "head", Map.get(params, "value", socket.assigns.head_branch))
     {:noreply, assign(socket, head_branch: head)}
   end
 
-  def handle_event("select_format", %{"format" => format}, socket) do
+  def handle_event("select_format", params, socket) do
+    format = Map.get(params, "format", Map.get(params, "value", socket.assigns.format))
     {:noreply, assign(socket, format: format)}
   end
 
@@ -210,7 +225,7 @@ defmodule RagegWeb.AssessLive do
 
       <%!-- Branch Selection Card --%>
       <div class="card bg-base-200 shadow-sm">
-        <div class="card-body p-4 space-y-4">
+        <form id="assess-form" phx-change="form_change" phx-submit="run_assessment" class="card-body p-4 space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <%!-- Base Ref --%>
             <div class="form-control">
@@ -224,7 +239,6 @@ defmodule RagegWeb.AssessLive do
                 value={@base_ref}
                 placeholder="origin/main"
                 class="input input-bordered font-mono"
-                phx-change="update_base"
                 phx-debounce="300"
                 disabled={@running}
               />
@@ -243,7 +257,6 @@ defmodule RagegWeb.AssessLive do
                   name="head"
                   id="assess-head-branch"
                   class="select select-bordered flex-1 font-mono"
-                  phx-change="select_head"
                   disabled={@running}
                 >
                   <option value="" disabled selected={@head_branch == ""}>
@@ -281,7 +294,6 @@ defmodule RagegWeb.AssessLive do
                 name="format"
                 id="assess-format"
                 class="select select-bordered select-sm"
-                phx-change="select_format"
                 disabled={@running}
               >
                 <option value="markdown" selected={@format == "markdown"}>
@@ -295,8 +307,8 @@ defmodule RagegWeb.AssessLive do
             <div class="flex-1"></div>
             <button
               id="assess-run-btn"
+              type="submit"
               class="btn btn-primary gap-2"
-              phx-click="run_assessment"
               disabled={@running or @head_branch == "" or @project_path == ""}
             >
               <span :if={@running} class="loading loading-spinner loading-sm"></span>
@@ -304,7 +316,7 @@ defmodule RagegWeb.AssessLive do
               {if @running, do: gettext("Assessing..."), else: gettext("Run Assessment")}
             </button>
           </div>
-        </div>
+        </form>
       </div>
 
       <%!-- Error --%>

@@ -66,10 +66,11 @@ defmodule Rageg.MixProject do
       # delegation fix in ragex are required for rageg to function correctly.
     ] ++
       if Mix.env() == :prod and is_nil(System.get_env("LOCAL_OEDITUS")),
-        do: [{:ragex, "~> 0.22"}, {:dllb, "~> 0.8"}],
+        do: [{:ragex, "~> 0.22"}, {:dllb, "~> 0.8"}, {:metacredo, "~> 0.4"}],
         else: [
           {:ragex, path: "../ragex", override: true},
-          {:dllb, path: "../dllb_ex", override: true}
+          {:dllb, path: "../dllb_ex", override: true},
+          {:metacredo, path: "../metacredo", override: true}
         ]
   end
 

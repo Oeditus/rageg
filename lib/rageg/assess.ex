@@ -116,7 +116,16 @@ defmodule Rageg.Assess do
 
         {:ok, changed_files} ->
           on_progress.("#{length(changed_files)} file(s) changed")
-          do_assess(repo_root, resolved_base, resolved_head, changed_files, format, on_progress, opts)
+
+          do_assess(
+            repo_root,
+            resolved_base,
+            resolved_head,
+            changed_files,
+            format,
+            on_progress,
+            opts
+          )
 
         {:error, reason} ->
           {:error, "Failed to resolve changed files: #{inspect(reason)}"}
