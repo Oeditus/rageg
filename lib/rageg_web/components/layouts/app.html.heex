@@ -138,6 +138,12 @@
             {gettext("Audit Report")}
           </.link>
         </li>
+        <li>
+          <.link navigate={~p"/mcp"} class={nav_active(assigns[:current_path] || "/", "/mcp")}>
+            <.icon name="hero-command-line" class="size-4" />
+            {gettext("MCP Tools")}
+          </.link>
+        </li>
 
         <%!-- dllb Backend --%>
         <li class="menu-title text-xs uppercase tracking-wider mt-4">

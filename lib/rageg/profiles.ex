@@ -175,7 +175,11 @@ defmodule Rageg.Profiles do
         {:reply, {:error, :profile_not_found}, state}
 
       profile ->
-        on_progress.("Switching to #{profile.name}...")
+        # Switch in-memory graph, vector store, and file-tracker state to target project
+        Ragex.Graph.Store.load_project(profile.path)
+
+        # Watch active project directory for incremental updates when files change
+        Ragex.Watcher.watch_directory(profile.path)
 
         # Ingest into dllb (idempotent upserts)
         if dllb_connected?() do

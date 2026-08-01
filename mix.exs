@@ -5,7 +5,7 @@ defmodule Rageg.MixProject do
     [
       app: :rageg,
       version: "0.1.0",
-      elixir: "~> 1.15",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -66,11 +66,17 @@ defmodule Rageg.MixProject do
       # delegation fix in ragex are required for rageg to function correctly.
     ] ++
       if Mix.env() == :prod and is_nil(System.get_env("LOCAL_OEDITUS")),
-        do: [{:ragex, "~> 0.22"}, {:dllb, "~> 0.8"}, {:metacredo, "~> 0.4"}],
+        do: [
+          {:ragex, "~> 0.23"},
+          {:dllb, "~> 0.8"},
+          {:metacredo, "~> 0.4"},
+          {:metastatic, "~> 0.26"}
+        ],
         else: [
           {:ragex, path: "../ragex", override: true},
           {:dllb, path: "../dllb_ex", override: true},
-          {:metacredo, path: "../metacredo", override: true}
+          {:metacredo, path: "../metacredo", override: true},
+          {:metastatic, path: "../metastatic", override: true}
         ]
   end
 
