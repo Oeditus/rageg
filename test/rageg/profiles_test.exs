@@ -52,6 +52,11 @@ defmodule Rageg.ProfilesTest do
   end
 
   describe "Profiles GenServer" do
+    setup do
+      Profiles.clear_all!()
+      :ok
+    end
+
     test "active/0 returns nil when no profile is active" do
       assert Profiles.active() == nil
     end

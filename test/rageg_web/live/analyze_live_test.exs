@@ -1,5 +1,5 @@
 defmodule RagegWeb.AnalyzeLiveTest do
-  use RagegWeb.ConnCase, async: true
+  use RagegWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
@@ -17,6 +17,7 @@ defmodule RagegWeb.AnalyzeLiveTest do
     test "run_analysis with empty path shows error", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/analyze")
 
+      render_change(view, "update_path", %{"path" => ""})
       html = render_click(view, "run_analysis", %{})
       assert html =~ "Enter a project path"
     end

@@ -102,8 +102,20 @@ defmodule Rageg.Profiles do
     dir = profiles_dir()
     File.mkdir_p!(dir)
 
+    all_profiles = load_all_profiles(dir)
+    active_profile = restore_active_profile(dir, all_profiles)
+
+    if active_profile do
+      try do
+        Ragex.Graph.Store.load_project(active_profile.path)
+        Ragex.Watcher.watch_directory(active_profile.path)
+      rescue
+        _ -> :ok
+      end
+    end
+
     state = %{
-      active: nil,
+      active: active_profile,
       profiles_dir: dir
     }
 
@@ -135,8 +147,29 @@ defmodule Rageg.Profiles do
       profile = Profile.new(abs_path, name)
 
       case save_profile(profile, state.profiles_dir) do
-        :ok -> {:reply, {:ok, profile}, state}
-        error -> {:reply, error, state}
+        :ok ->
+          # If no active profile exists yet, make this one active
+          new_active =
+            if state.active == nil do
+              save_active_profile_id(profile.id, state.profiles_dir)
+
+              try do
+                Ragex.Graph.Store.load_project(profile.path)
+                Ragex.Watcher.watch_directory(profile.path)
+              rescue
+                _ -> :ok
+              end
+
+              Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, profile})
+              profile
+            else
+              state.active
+            end
+
+          {:reply, {:ok, profile}, %{state | active: new_active}}
+
+        error ->
+          {:reply, error, state}
       end
     else
       {:reply, {:error, "Directory does not exist: #{abs_path}"}, state}
@@ -148,7 +181,35 @@ defmodule Rageg.Profiles do
 
     case File.rm(file) do
       :ok ->
-        new_active = if state.active && state.active.id == id, do: nil, else: state.active
+        all_profiles = load_all_profiles(state.profiles_dir)
+
+        new_active =
+          if state.active && state.active.id == id do
+            next_p = latest_profile(all_profiles)
+
+            if next_p do
+              save_active_profile_id(next_p.id, state.profiles_dir)
+
+              try do
+                Ragex.Graph.Store.load_project(next_p.path)
+                Ragex.Watcher.watch_directory(next_p.path)
+              rescue
+                _ -> :ok
+              end
+
+              next_p
+            else
+              clear_active_profile_file(state.profiles_dir)
+              nil
+            end
+          else
+            state.active
+          end
+
+        if state.active != new_active do
+          Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, new_active})
+        end
+
         {:reply, :ok, %{state | active: new_active}}
 
       {:error, reason} ->
@@ -161,6 +222,8 @@ defmodule Rageg.Profiles do
     |> Path.join("*.json")
     |> Path.wildcard()
     |> Enum.each(&File.rm!/1)
+
+    clear_active_profile_file(state.profiles_dir)
 
     Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, nil})
 
@@ -194,6 +257,7 @@ defmodule Rageg.Profiles do
         # Mark as ingested and save
         updated = Profile.mark_ingested(profile)
         save_profile(updated, state.profiles_dir)
+        save_active_profile_id(updated.id, state.profiles_dir)
 
         # Broadcast
         Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, updated})
@@ -208,6 +272,54 @@ defmodule Rageg.Profiles do
   defp profiles_dir do
     Application.get_env(:rageg, :profiles_dir, "~/.rageg/profiles")
     |> Path.expand()
+  end
+
+  defp restore_active_profile(dir, all_profiles) do
+    active_file = active_profile_file(dir)
+
+    target_profile =
+      if File.exists?(active_file) do
+        case File.read(active_file) do
+          {:ok, content} ->
+            id = String.trim(content)
+            Enum.find(all_profiles, &(&1.id == id))
+
+          _ ->
+            nil
+        end
+      else
+        nil
+      end
+
+    target_profile || latest_profile(all_profiles)
+  end
+
+  defp latest_profile([]) do
+    nil
+  end
+
+  defp latest_profile(profiles) do
+    Enum.max_by(
+      profiles,
+      fn p -> p.last_ingested_at || p.created_at || "" end,
+      fn -> nil end
+    )
+  end
+
+  defp active_profile_file(dir) do
+    Path.join(dir, ".active_profile")
+  end
+
+  defp save_active_profile_id(id, dir) do
+    File.write!(active_profile_file(dir), id)
+  rescue
+    _ -> :ok
+  end
+
+  defp clear_active_profile_file(dir) do
+    File.rm(active_profile_file(dir))
+  rescue
+    _ -> :ok
   end
 
   defp load_all_profiles(dir) do

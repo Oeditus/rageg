@@ -1,5 +1,5 @@
 defmodule RagegWeb.MetacredoLiveTest do
-  use RagegWeb.ConnCase, async: true
+  use RagegWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 

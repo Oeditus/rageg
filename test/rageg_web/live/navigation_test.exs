@@ -1,5 +1,5 @@
 defmodule RagegWeb.NavigationTest do
-  use RagegWeb.ConnCase, async: true
+  use RagegWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
@@ -21,7 +21,7 @@ defmodule RagegWeb.NavigationTest do
   end
 
   describe "sidebar navigation" do
-    test "dashboard renders all stat sections", %{conn: conn} do
+    test "dashboard renders all stat sections when active profile is set", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/")
 
       # Dashboard content (sidebar is in the root layout, not LiveView HTML)
@@ -29,6 +29,14 @@ defmodule RagegWeb.NavigationTest do
       assert html =~ "Knowledge Graph"
       assert html =~ "AI Cache"
       assert html =~ "dllb Backend"
+    end
+
+    test "renders empty page with Select project when no profile is active", %{conn: conn} do
+      Rageg.Profiles.clear_all!()
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ "Select project"
+      assert html =~ "no-project-empty-state"
     end
   end
 end

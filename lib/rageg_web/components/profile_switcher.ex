@@ -75,16 +75,12 @@ defmodule RagegWeb.ProfileSwitcher do
     name = if name == "", do: nil, else: name
 
     case Profiles.create(path, name) do
-      {:ok, _profile} ->
-        {:noreply,
-         socket
-         |> assign(
-           profiles: Profiles.list(),
-           adding: false,
-           new_path: "",
-           new_name: "",
-           error: nil
-         )}
+      {:ok, profile} ->
+        handle_event(
+          "switch_profile",
+          %{"id" => profile.id},
+          assign(socket, adding: false, new_path: "", new_name: "", error: nil)
+        )
 
       {:error, reason} ->
         {:noreply, assign(socket, error: to_string(reason))}
