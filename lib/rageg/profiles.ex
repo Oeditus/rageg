@@ -108,7 +108,7 @@ defmodule Rageg.Profiles do
     if active_profile do
       try do
         Ragex.Graph.Store.load_project(active_profile.path)
-        Ragex.Watcher.watch_directory(active_profile.path)
+        watch_directory_safely(active_profile.path)
       rescue
         _ -> :ok
       end
@@ -155,7 +155,7 @@ defmodule Rageg.Profiles do
 
               try do
                 Ragex.Graph.Store.load_project(profile.path)
-                Ragex.Watcher.watch_directory(profile.path)
+                watch_directory_safely(profile.path)
               rescue
                 _ -> :ok
               end
@@ -192,7 +192,7 @@ defmodule Rageg.Profiles do
 
               try do
                 Ragex.Graph.Store.load_project(next_p.path)
-                Ragex.Watcher.watch_directory(next_p.path)
+                watch_directory_safely(next_p.path)
               rescue
                 _ -> :ok
               end
@@ -242,7 +242,7 @@ defmodule Rageg.Profiles do
         Ragex.Graph.Store.load_project(profile.path)
 
         # Watch active project directory for incremental updates when files change
-        Ragex.Watcher.watch_directory(profile.path)
+        watch_directory_safely(profile.path)
 
         # Ingest into dllb (idempotent upserts)
         if dllb_connected?() do
@@ -359,5 +359,15 @@ defmodule Rageg.Profiles do
       match?({:ok, _}, Dllb.query("SELECT 1"))
   rescue
     _ -> false
+  end
+
+  defp watch_directory_safely(path) do
+    if Mix.env() != :test do
+      Ragex.Watcher.watch_directory(path)
+    end
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
   end
 end

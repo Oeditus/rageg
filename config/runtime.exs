@@ -22,6 +22,25 @@ end
 
 config :rageg, RagegWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# dllb client connection pool & storage backend configuration
+default_dllb_enabled = if config_env() == :test, do: "false", else: "true"
+dllb_enabled = System.get_env("DLLB_ENABLED", default_dllb_enabled) in ["true", "1"]
+
+config :dllb,
+  enabled: dllb_enabled,
+  host: System.get_env("DLLB_HOST", "127.0.0.1"),
+  port: String.to_integer(System.get_env("DLLB_PORT", "3009")),
+  pool_size: String.to_integer(System.get_env("DLLB_POOL_SIZE", "5")),
+  timeout: String.to_integer(System.get_env("DLLB_TIMEOUT", "30000"))
+
+if dllb_enabled do
+  config :ragex, :store_backend, :dllb
+  config :metastatic, :cache, :dllb
+else
+  config :ragex, :store_backend, :ets
+  config :metastatic, :cache, :ets
+end
+
 # Ragex AI provider configuration.
 # `Ragex.AI.Config` reads configuration from `:ai` and `:ai_providers`, and keys from `:ai_keys`.
 # All of these are configured dynamically here to avoid compile-time bindings.

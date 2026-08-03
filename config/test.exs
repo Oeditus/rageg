@@ -15,6 +15,11 @@ config :logger, level: :warning
 config :rageg, :nx_acceleration, :host
 config :exla, default_client: :host
 
+# Disable dllb and use ETS backends for deterministic, isolated unit tests
+config :dllb, enabled: false
+config :ragex, :store_backend, :ets
+config :metastatic, :cache, :ets
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 

@@ -81,7 +81,10 @@ defmodule Rageg.Analyze do
     # unchanged files.
     on_progress.("Loading project cache...")
     Store.load_project(path)
-    Ragex.Watcher.watch_directory(path)
+
+    if Mix.env() != :test do
+      Ragex.Watcher.watch_directory(path)
+    end
 
     # If the analysis cache is completely fresh, return it immediately.
     case Cache.load(path) do
