@@ -48,6 +48,7 @@ defmodule Rageg.Metacredo do
       end
 
     report = MetaCredo.Execution.run(run_opts)
+    Metastatic.Cache.clear()
 
     issues = Enum.map(report.issues, &format_issue(&1, path))
 
@@ -87,6 +88,31 @@ defmodule Rageg.Metacredo do
   """
   @spec get_cached_result(String.t()) :: result() | nil
   def get_cached_result(path) when is_binary(path) and path != "" do
+    if dllb_available?() do
+      case get_cached_result_dllb(path) do
+        nil -> get_cached_result_file(path)
+        res -> res
+      end
+    else
+      get_cached_result_file(path)
+    end
+  end
+
+  def get_cached_result(_), do: nil
+
+  @doc """
+  Persists MetaCredo analysis result for a project path.
+  """
+  @spec save_cached_result(String.t(), result()) :: :ok
+  def save_cached_result(path, result) when is_binary(path) and is_map(result) do
+    if dllb_available?() do
+      save_cached_result_dllb(path, result)
+    end
+
+    save_cached_result_file(path, result)
+  end
+
+  defp get_cached_result_file(path) do
     cache_file = cache_path(path)
 
     case File.read(cache_file) do
@@ -103,19 +129,62 @@ defmodule Rageg.Metacredo do
     _ -> nil
   end
 
-  def get_cached_result(_), do: nil
-
-  @doc """
-  Persists MetaCredo analysis result for a project path.
-  """
-  @spec save_cached_result(String.t(), result()) :: :ok
-  def save_cached_result(path, result) when is_binary(path) and is_map(result) do
+  defp save_cached_result_file(path, result) do
     cache_file = cache_path(path)
     File.mkdir_p!(Path.dirname(cache_file))
     File.write!(cache_file, encode_result(result))
     :ok
   rescue
     _ -> :ok
+  end
+
+  defp dllb_available? do
+    Application.get_env(:dllb, :enabled, false) &&
+      match?({:ok, %Dllb.Result.Rows{}}, Dllb.query("SELECT * FROM _dllb_ping_"))
+  rescue
+    _ -> false
+  catch
+    _, _ -> false
+  end
+
+  defp get_cached_result_dllb(path) do
+    id = cache_id(path)
+
+    case Dllb.query("SELECT * FROM _metacredo_cache:#{id}") do
+      {:ok, %Dllb.Result.Rows{data: [row | _]}} ->
+        payload = row["payload"] || row[:payload]
+
+        if payload && is_binary(payload) do
+          case decode_result(payload) do
+            {:ok, res} -> res
+            _ -> nil
+          end
+        end
+
+      _ ->
+        nil
+    end
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
+  end
+
+  defp save_cached_result_dllb(path, result) do
+    id = cache_id(path)
+    json = encode_result(result)
+    escaped_json = String.replace(json, "'", "''")
+    query = "CREATE _metacredo_cache:#{id} SET payload = '#{escaped_json}' ON CONFLICT UPDATE"
+    Dllb.query(query)
+    :ok
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
+  end
+
+  defp cache_id(path) do
+    "m_" <> (:crypto.hash(:sha256, path) |> Base.encode16(case: :lower))
   end
 
   # -- Helpers --

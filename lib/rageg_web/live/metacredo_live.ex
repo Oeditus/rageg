@@ -3,8 +3,8 @@ defmodule RagegWeb.MetacredoLive do
   LiveView page for MetaCredo static code analysis.
 
   Allows running cross-language MetaAST checks against the active project
-  profile with options for strict mode, category filtering, and real-time
-  issue exploration.
+  profile with options for strict mode, category filtering, real-time
+  issue exploration, and memory-optimized pagination.
   """
 
   use RagegWeb, :live_view
@@ -30,6 +30,8 @@ defmodule RagegWeb.MetacredoLive do
      |> assign(selected_category: "all")
      |> assign(search_query: "")
      |> assign(running: false)
+     |> assign(page: 1)
+     |> assign(per_page: 50)
      |> assign(result: cached_result)
      |> assign(error: nil)}
   end
@@ -45,11 +47,18 @@ defmodule RagegWeb.MetacredoLive do
   end
 
   def handle_event("filter_category", %{"category" => cat}, socket) do
-    {:noreply, assign(socket, selected_category: cat)}
+    {:noreply, assign(socket, selected_category: cat, page: 1)}
   end
 
   def handle_event("update_search", %{"query" => q}, socket) do
-    {:noreply, assign(socket, search_query: q)}
+    {:noreply, assign(socket, search_query: q, page: 1)}
+  end
+
+  def handle_event("change_page", %{"page" => page_str}, socket) do
+    case Integer.parse(to_string(page_str)) do
+      {page, _} when page > 0 -> {:noreply, assign(socket, page: page)}
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("run_analysis", _params, socket) do
@@ -78,11 +87,11 @@ defmodule RagegWeb.MetacredoLive do
   def handle_info({:rageg_profile_changed, profile}, socket) do
     path = (profile && profile.path) || ""
     cached_result = Metacredo.get_cached_result(path)
-    {:noreply, assign(socket, project_path: path, result: cached_result, error: nil)}
+    {:noreply, assign(socket, project_path: path, result: cached_result, page: 1, error: nil)}
   end
 
   def handle_info({:analysis_complete, {:ok, result}}, socket) do
-    {:noreply, assign(socket, running: false, result: result, error: nil)}
+    {:noreply, assign(socket, running: false, result: result, page: 1, error: nil)}
   end
 
   def handle_info({:analysis_complete, {:error, reason}}, socket) do
@@ -228,6 +237,10 @@ defmodule RagegWeb.MetacredoLive do
 
         <%!-- Issues List --%>
         <% filtered = filter_issues(@result.issues, @selected_category, @search_query) %>
+        <% total_filtered = length(filtered) %>
+        <% total_pages = max(1, ceil(total_filtered / @per_page)) %>
+        <% current_page = min(@page, total_pages) %>
+        <% paged_issues = Enum.slice(filtered, (current_page - 1) * @per_page, @per_page) %>
 
         <div :if={filtered == []} class="card bg-base-200 border border-base-300 text-center p-8">
           <.icon name="hero-check-circle" class="size-12 text-success mx-auto mb-3" />
@@ -238,8 +251,38 @@ defmodule RagegWeb.MetacredoLive do
         </div>
 
         <div :if={filtered != []} class="space-y-3" id="metacredo-issues-list">
+          <%!-- Pagination bar top --%>
+          <div :if={total_pages > 1} class="flex items-center justify-between bg-base-200 px-4 py-2 rounded-xl border border-base-300 text-xs" id="metacredo-pagination-top">
+            <span class="text-base-content/60 font-mono">
+              {gettext("Showing")} {(current_page - 1) * @per_page + 1}-{min(current_page * @per_page, total_filtered)} {gettext("of")} {total_filtered} {gettext("issues")}
+            </span>
+            <div class="flex items-center gap-2">
+              <button
+                class="btn btn-xs btn-outline font-mono"
+                phx-click="change_page"
+                phx-value-page={current_page - 1}
+                disabled={current_page <= 1}
+                id="metacredo-prev-page-top"
+              >
+                <.icon name="hero-chevron-left" class="size-3" />
+                {gettext("Prev")}
+              </button>
+              <span class="font-bold font-mono px-2">{current_page} / {total_pages}</span>
+              <button
+                class="btn btn-xs btn-outline font-mono"
+                phx-click="change_page"
+                phx-value-page={current_page + 1}
+                disabled={current_page >= total_pages}
+                id="metacredo-next-page-top"
+              >
+                {gettext("Next")}
+                <.icon name="hero-chevron-right" class="size-3" />
+              </button>
+            </div>
+          </div>
+
           <div
-            :for={{issue, idx} <- Enum.with_index(filtered)}
+            :for={{issue, idx} <- Enum.with_index(paged_issues)}
             class="card bg-base-200 border border-base-300 hover:border-primary/50 transition-colors shadow-xs"
             id={"metacredo-issue-#{idx}"}
           >
@@ -293,6 +336,36 @@ defmodule RagegWeb.MetacredoLive do
                   <span>{issue.suggestion}</span>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <%!-- Pagination bar bottom --%>
+          <div :if={total_pages > 1} class="flex items-center justify-between bg-base-200 px-4 py-2 rounded-xl border border-base-300 text-xs" id="metacredo-pagination-bottom">
+            <span class="text-base-content/60 font-mono">
+              {gettext("Showing")} {(current_page - 1) * @per_page + 1}-{min(current_page * @per_page, total_filtered)} {gettext("of")} {total_filtered} {gettext("issues")}
+            </span>
+            <div class="flex items-center gap-2">
+              <button
+                class="btn btn-xs btn-outline font-mono"
+                phx-click="change_page"
+                phx-value-page={current_page - 1}
+                disabled={current_page <= 1}
+                id="metacredo-prev-page-bottom"
+              >
+                <.icon name="hero-chevron-left" class="size-3" />
+                {gettext("Prev")}
+              </button>
+              <span class="font-bold font-mono px-2">{current_page} / {total_pages}</span>
+              <button
+                class="btn btn-xs btn-outline font-mono"
+                phx-click="change_page"
+                phx-value-page={current_page + 1}
+                disabled={current_page >= total_pages}
+                id="metacredo-next-page-bottom"
+              >
+                {gettext("Next")}
+                <.icon name="hero-chevron-right" class="size-3" />
+              </button>
             </div>
           </div>
         </div>

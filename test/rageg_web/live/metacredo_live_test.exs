@@ -25,5 +25,12 @@ defmodule RagegWeb.MetacredoLiveTest do
       html = render_click(view, "toggle_strict", %{})
       assert html =~ "MetaCredo Static Analysis"
     end
+
+    test "handles page changes gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/metacredo")
+
+      html = render_click(view, "change_page", %{"page" => "2"})
+      assert html =~ "MetaCredo Static Analysis"
+    end
   end
 end

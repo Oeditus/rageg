@@ -32,13 +32,13 @@ defmodule RagegWeb.ConnCase do
   end
 
   setup _tags do
-    tmp_dir = System.tmp_dir!() |> Path.join("rageg_test_proj")
+    tmp_dir =
+      System.tmp_dir!() |> Path.join("rageg_test_proj_#{System.unique_integer([:positive])}")
+
     File.mkdir_p!(tmp_dir)
 
-    if Rageg.Profiles.active() == nil do
-      {:ok, profile} = Rageg.Profiles.create(tmp_dir, "Test Project")
-      Rageg.Profiles.switch(profile.id)
-    end
+    {:ok, profile} = Rageg.Profiles.create(tmp_dir, "Test Project")
+    Rageg.Profiles.switch(profile.id)
 
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end

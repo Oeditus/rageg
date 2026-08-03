@@ -144,8 +144,9 @@ defmodule Rageg.Analyze do
             end
           )
 
-        # Free memory held by the LocationEnricher cache.
+        # Free memory held by LocationEnricher and Metastatic AST caches.
         LocationEnricher.clear_cache()
+        Metastatic.Cache.clear()
 
         # Persist caches so the next run can skip unchanged work.
         on_progress.("Saving caches...")
