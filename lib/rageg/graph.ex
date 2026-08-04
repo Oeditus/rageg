@@ -77,7 +77,7 @@ defmodule Rageg.Graph do
       # Build lookup from dllb record IDs to human-readable Module.fun/arity names.
       dllb_name_lookup =
         timed(:name_lookup, fn ->
-          lookup = build_dllb_name_lookup()
+          lookup = build_dllb_name_lookup(base.nodes)
           Logger.info("[graph:name_lookup] #{map_size(lookup)} name entries")
           lookup
         end)
@@ -248,8 +248,18 @@ defmodule Rageg.Graph do
 
   # Builds a map from dllb record ID -> "Module.fun/arity" by querying
   # all nodes from the store and extracting their structured metadata.
-  defp build_dllb_name_lookup do
-    Store.list_nodes(nil, :infinity)
+  defp build_dllb_name_lookup(base_nodes) do
+    nodes =
+      if is_list(base_nodes) and base_nodes != [] do
+        Enum.map(base_nodes, fn n ->
+          data = Map.get(n, :data) || %{}
+          %{type: Map.get(n, :type) || Map.get(n, :kind), id: n.id, data: data}
+        end)
+      else
+        Store.list_nodes(nil, :infinity)
+      end
+
+    nodes
     |> Enum.flat_map(fn n ->
       data = n[:data] || %{}
       dllb_id = data[:id]

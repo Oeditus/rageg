@@ -18,6 +18,15 @@ defmodule Rageg.Application do
     # Load AI Keys and dynamic provider configuration
     Rageg.AIKeys.load_keys()
 
+    # Log active storage backend configuration
+    require Logger
+    storage_mod = Ragex.Store.Backend.module()
+    cache_mod = Metastatic.Cache.impl()
+
+    Logger.info(
+      "Active storage backend: #{inspect(storage_mod)} (AST Cache: #{inspect(cache_mod)})"
+    )
+
     # Attach Logger-backed telemetry handlers
     Rageg.Profiles.IngestTelemetry.attach()
     Rageg.Graph.Telemetry.attach()

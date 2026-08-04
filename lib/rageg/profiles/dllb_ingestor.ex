@@ -127,11 +127,12 @@ defmodule Rageg.Profiles.DllbIngestor do
   end
 
   defp ingest_files(files, total, project_tag, batch_size, on_progress) do
+    concurrency = max(4, System.schedulers_online())
+
     files
     |> Enum.with_index(1)
-    |> Enum.reduce(
-      %{files_ok: 0, files_err: 0, nodes: 0, edges: 0},
-      fn {{file_path, lang}, idx}, acc ->
+    |> Task.async_stream(
+      fn {{file_path, lang}, idx} ->
         on_progress.("Ingesting [#{idx}/#{total}] #{Path.relative_to_cwd(file_path)}")
 
         outcome =
@@ -139,19 +140,29 @@ defmodule Rageg.Profiles.DllbIngestor do
             ingest_one(file_path, lang, project_tag, batch_size)
           end)
 
-        case outcome do
-          {:ok, nodes, edges} ->
-            %{
-              acc
-              | files_ok: acc.files_ok + 1,
-                nodes: acc.nodes + nodes,
-                edges: acc.edges + edges
-            }
+        {file_path, outcome}
+      end,
+      max_concurrency: concurrency,
+      timeout: 60_000
+    )
+    |> Enum.reduce(
+      %{files_ok: 0, files_err: 0, nodes: 0, edges: 0},
+      fn
+        {:ok, {_file_path, {:ok, nodes, edges}}}, acc ->
+          %{
+            acc
+            | files_ok: acc.files_ok + 1,
+              nodes: acc.nodes + nodes,
+              edges: acc.edges + edges
+          }
 
-          {:error, reason} ->
-            Logger.warning("Ingest failed for #{file_path}: #{inspect(reason)}")
-            %{acc | files_err: acc.files_err + 1}
-        end
+        {:ok, {file_path, {:error, reason}}}, acc ->
+          Logger.warning("Ingest failed for #{file_path}: #{inspect(reason)}")
+          %{acc | files_err: acc.files_err + 1}
+
+        {:exit, reason}, acc ->
+          Logger.warning("Ingest task exited: #{inspect(reason)}")
+          %{acc | files_err: acc.files_err + 1}
       end
     )
   end

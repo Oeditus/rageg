@@ -50,7 +50,9 @@ defmodule Rageg.Metacredo do
     report = MetaCredo.Execution.run(run_opts)
     Metastatic.Cache.clear()
 
-    issues = Enum.map(report.issues, &format_issue(&1, path))
+    files_cache = :ets.new(:metacredo_file_cache, [:set, :private])
+    issues = Enum.map(report.issues, &format_issue(&1, path, files_cache))
+    :ets.delete(files_cache)
 
     result = %{
       source_files_count: length(report.source_files),
@@ -275,7 +277,7 @@ defmodule Rageg.Metacredo do
     }
   end
 
-  defp format_issue(issue, project_path) do
+  defp format_issue(issue, project_path, files_cache) do
     check_name =
       if is_atom(issue.check) do
         issue.check |> Module.split() |> List.last()
@@ -293,13 +295,13 @@ defmodule Rageg.Metacredo do
       line_no: issue.line_no,
       column: issue.column,
       filename: issue.filename,
-      snippet: extract_snippet(issue.filename, issue.line_no, project_path)
+      snippet: extract_snippet(issue.filename, issue.line_no, project_path, files_cache)
     }
 
     Map.put(formatted, :suggestion, suggest_fix(formatted))
   end
 
-  defp extract_snippet(filename, line_no, project_path)
+  defp extract_snippet(filename, line_no, project_path, files_cache)
        when is_binary(filename) and is_integer(line_no) and line_no > 0 do
     possible_paths = [
       filename,
@@ -309,38 +311,52 @@ defmodule Rageg.Metacredo do
     resolved_path = Enum.find(possible_paths, &File.regular?/1)
 
     if resolved_path do
-      case File.read(resolved_path) do
-        {:ok, content} ->
-          all_lines = String.split(content, ~r/\r?\n/)
-          total_lines = length(all_lines)
+      all_lines =
+        case :ets.lookup(files_cache, resolved_path) do
+          [{^resolved_path, cached}] ->
+            cached
 
-          if line_no <= total_lines do
-            context_radius = 2
-            start_line = max(1, line_no - context_radius)
-            end_line = min(total_lines, line_no + context_radius)
+          [] ->
+            case File.read(resolved_path) do
+              {:ok, content} ->
+                lines = String.split(content, ~r/\r?\n/)
+                :ets.insert(files_cache, {resolved_path, lines})
+                lines
 
-            lines_slice =
-              all_lines
-              |> Enum.slice((start_line - 1)..(end_line - 1))
-              |> Enum.with_index(start_line)
-              |> Enum.map(fn {line_content, idx} ->
-                %{
-                  line_no: idx,
-                  content: line_content,
-                  is_target: idx == line_no
-                }
-              end)
+              _ ->
+                nil
+            end
+        end
 
-            %{
-              start_line: start_line,
-              lines: lines_slice
-            }
-          else
-            nil
-          end
+      if all_lines do
+        total_lines = length(all_lines)
 
-        _ ->
+        if line_no <= total_lines do
+          context_radius = 2
+          start_line = max(1, line_no - context_radius)
+          end_line = min(total_lines, line_no + context_radius)
+
+          lines_slice =
+            all_lines
+            |> Enum.slice((start_line - 1)..(end_line - 1))
+            |> Enum.with_index(start_line)
+            |> Enum.map(fn {line_content, idx} ->
+              %{
+                line_no: idx,
+                content: line_content,
+                is_target: idx == line_no
+              }
+            end)
+
+          %{
+            start_line: start_line,
+            lines: lines_slice
+          }
+        else
           nil
+        end
+      else
+        nil
       end
     else
       nil
@@ -349,7 +365,7 @@ defmodule Rageg.Metacredo do
     _ -> nil
   end
 
-  defp extract_snippet(_filename, _line_no, _project_path), do: nil
+  defp extract_snippet(_filename, _line_no, _project_path, _files_cache), do: nil
 
   defp suggest_fix(issue) do
     check = to_string(issue.check || "")
