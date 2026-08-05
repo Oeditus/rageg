@@ -12,8 +12,9 @@
 # Defensive by design: probes the TCP ports first and never launches a second
 # copy of a server that is already up. Safe to re-run.
 #
-# Configuration (all optional environment variables):
-#   DLLB_HOST       dllb server host                (default 127.0.0.1)
+# Configuration:
+#   DEEPSEEK_API_KEY  DeepSeek API key              (REQUIRED -- no default)
+#   DLLB_HOST         dllb server host              (default 127.0.0.1)
 #   DLLB_PORT       dllb server port                (default 3009)
 #   DLLB_DIR        dllb server repo                (default: <rageg>/../dllb)
 #   DLLB_START      command used to start dllb       (default: ./start_dev.sh)
@@ -28,6 +29,10 @@
 set -euo pipefail
 
 # ---- configuration -------------------------------------------------------
+# DEEPSEEK_API_KEY must be provided by the caller -- never hardcode it here.
+[ -n "${DEEPSEEK_API_KEY:-}" ] || \
+  { printf '\033[31m  x DEEPSEEK_API_KEY is not set. Export it before running this script.\033[0m\n' >&2; exit 1; }
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 RAGEG_DIR="$(cd -- "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
 

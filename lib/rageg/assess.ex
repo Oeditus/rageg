@@ -34,20 +34,23 @@ defmodule Rageg.Assess do
             output
             |> String.split("\n", trim: true)
             |> Enum.map(fn line ->
+              line = String.trim(line)
+
               {name, current?} =
-                case String.split(line, " ", parts: 2) do
-                  [name, "*"] -> {name, true}
-                  [name | _] -> {name, false}
+                case String.split(line, ~r/\s+/, parts: 2) do
+                  [name, "*"] -> {String.trim(name), true}
+                  [name | _] -> {String.trim(name), false}
                 end
 
               %{name: name, current?: current?}
             end)
-            |> Enum.reject(fn b -> String.contains?(b.name, "HEAD") end)
+            |> Enum.reject(fn b -> String.contains?(b.name, "HEAD") or b.name == "" end)
+            |> Enum.uniq_by(fn b -> b.name end)
 
           {:ok, branches}
 
         {err, _} ->
-          {:error, err}
+          {:error, String.trim(err)}
       end
     end
   end
@@ -92,6 +95,12 @@ defmodule Rageg.Assess do
               {:error, reason} -> throw({:branch_error, reason})
             end
 
+          "" ->
+            case Repo.current_branch(repo_root) do
+              {:ok, branch} -> branch
+              {:error, reason} -> throw({:branch_error, reason})
+            end
+
           branch ->
             branch
         end
@@ -100,39 +109,46 @@ defmodule Rageg.Assess do
       resolved_base = resolve_ref_or_original(repo_root, base)
       resolved_head = resolve_ref_or_original(repo_root, head)
 
-      on_progress.("Diffing #{resolved_base}...#{resolved_head}")
+      if resolved_base == "" or resolved_head == "" do
+        {:error, "Invalid base or head branch specified."}
+      else
+        on_progress.("Diffing #{resolved_base}...#{resolved_head}")
 
-      case get_changed_files(repo_root, resolved_base, resolved_head) do
-        {:ok, []} ->
-          {:ok,
-           %{
-             report: "No files changed between `#{resolved_base}` and `#{resolved_head}`.",
-             changed_files: [],
-             summary: %{total_issues: 0},
-             format: format,
-             base: resolved_base,
-             head: resolved_head
-           }}
+        case get_changed_files(repo_root, resolved_base, resolved_head) do
+          {:ok, []} ->
+            {:ok,
+             %{
+               report: "No files changed between `#{resolved_base}` and `#{resolved_head}`.",
+               changed_files: [],
+               summary: %{total_issues: 0},
+               format: format,
+               base: resolved_base,
+               head: resolved_head
+             }}
 
-        {:ok, changed_files} ->
-          on_progress.("#{length(changed_files)} file(s) changed")
+          {:ok, changed_files} ->
+            on_progress.("#{length(changed_files)} file(s) changed")
 
-          do_assess(
-            repo_root,
-            resolved_base,
-            resolved_head,
-            changed_files,
-            format,
-            on_progress,
-            opts
-          )
+            do_assess(
+              repo_root,
+              resolved_base,
+              resolved_head,
+              changed_files,
+              format,
+              on_progress,
+              opts
+            )
 
-        {:error, reason} ->
-          {:error, "Failed to resolve changed files: #{inspect(reason)}"}
+          {:error, reason} ->
+            {:error, "Failed to resolve changed files: #{reason}"}
+        end
       end
     end
+  rescue
+    e -> {:error, Exception.message(e)}
   catch
     {:branch_error, reason} -> {:error, "Failed to resolve branch: #{inspect(reason)}"}
+    kind, reason -> {:error, "Assessment failed: #{inspect({kind, reason})}"}
   end
 
   # -- Private Implementation --
@@ -293,25 +309,31 @@ defmodule Rageg.Assess do
     _ -> :ok
   end
 
-  # Verifies a ref exists. If not, tries prefixing with "origin/" (handles the
-  # common case of a user entering a bare remote branch name like
-  # "feature/foo" instead of "origin/feature/foo"). Falls back to the original
-  # string if neither resolves, letting git produce the error message.
   defp resolve_ref_or_original(repo_root, ref) do
+    ref = String.trim(to_string(ref || ""))
+
+    if ref == "" do
+      ""
+    else
+      cond do
+        ref_valid?(repo_root, ref) ->
+          ref
+
+        String.starts_with?(ref, "origin/") ->
+          local_ref = String.replace_prefix(ref, "origin/", "")
+          if ref_valid?(repo_root, local_ref), do: local_ref, else: ref
+
+        true ->
+          remote_ref = "origin/#{ref}"
+          if ref_valid?(repo_root, remote_ref), do: remote_ref, else: ref
+      end
+    end
+  end
+
+  defp ref_valid?(repo_root, ref) do
     case System.cmd("git", ["rev-parse", "--verify", ref], cd: repo_root, stderr_to_stdout: true) do
-      {_, 0} ->
-        ref
-
-      _ ->
-        remote_ref = "origin/#{ref}"
-
-        case System.cmd("git", ["rev-parse", "--verify", remote_ref],
-               cd: repo_root,
-               stderr_to_stdout: true
-             ) do
-          {_, 0} -> remote_ref
-          _ -> ref
-        end
+      {_, 0} -> true
+      _ -> false
     end
   end
 
@@ -319,15 +341,30 @@ defmodule Rageg.Assess do
     args = ["diff", "--name-only", "--diff-filter=ACMR", "#{base}...#{head}"]
 
     case System.cmd("git", args, cd: repo_root, stderr_to_stdout: true) do
-      {output, 0} -> {:ok, String.split(output, "\n", trim: true)}
-      {err, _} -> {:error, err}
+      {output, 0} ->
+        {:ok, String.split(output, "\n", trim: true)}
+
+      {_, _} ->
+        # Fallback to direct range diff (base..head or base head)
+        fallback_args = ["diff", "--name-only", "--diff-filter=ACMR", base, head]
+
+        case System.cmd("git", fallback_args, cd: repo_root, stderr_to_stdout: true) do
+          {output, 0} -> {:ok, String.split(output, "\n", trim: true)}
+          {err, _} -> {:error, String.trim(err)}
+        end
     end
   end
 
   defp get_diff(repo_root, base, head) do
     case System.cmd("git", ["diff", "#{base}...#{head}"], cd: repo_root, stderr_to_stdout: true) do
-      {diff, 0} -> {:ok, diff}
-      {err, _} -> {:error, err}
+      {diff, 0} ->
+        {:ok, diff}
+
+      _ ->
+        case System.cmd("git", ["diff", base, head], cd: repo_root, stderr_to_stdout: true) do
+          {diff, 0} -> {:ok, diff}
+          {err, _} -> {:error, String.trim(err)}
+        end
     end
   end
 
@@ -441,8 +478,13 @@ defmodule Rageg.Assess do
 
   defp parse_provider(nil), do: nil
 
-  defp parse_provider(name) when is_binary(name),
-    do: String.to_existing_atom(name)
+  defp parse_provider(name) when is_binary(name) do
+    try do
+      String.to_existing_atom(name)
+    rescue
+      ArgumentError -> nil
+    end
+  end
 
   defp parse_provider(name) when is_atom(name), do: name
 

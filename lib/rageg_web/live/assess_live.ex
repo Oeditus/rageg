@@ -32,8 +32,14 @@ defmodule RagegWeb.AssessLive do
 
     current_branch =
       case Enum.find(branches, & &1.current?) do
-        %{name: name} -> name
-        _ -> ""
+        %{name: name} ->
+          name
+
+        _ ->
+          case branches do
+            [%{name: name} | _] -> name
+            _ -> ""
+          end
       end
 
     {:ok,
@@ -90,14 +96,22 @@ defmodule RagegWeb.AssessLive do
         _ -> []
       end
 
-    {:noreply, assign(socket, branches: branches)}
+    current_branch =
+      case Enum.find(branches, & &1.current?) do
+        %{name: name} -> name
+        _ -> socket.assigns.head_branch
+      end
+
+    head = if current_branch != "", do: current_branch, else: socket.assigns.head_branch
+
+    {:noreply, assign(socket, branches: branches, head_branch: head)}
   end
 
-  def handle_event("run_assessment", _params, socket) do
+  def handle_event("run_assessment", params, socket) do
     path = socket.assigns.project_path
-    base = socket.assigns.base_ref
-    head = socket.assigns.head_branch
-    format = socket.assigns.format
+    base = Map.get(params, "base", socket.assigns.base_ref)
+    head = Map.get(params, "head", socket.assigns.head_branch)
+    format = Map.get(params, "format", socket.assigns.format)
 
     cond do
       path == "" ->

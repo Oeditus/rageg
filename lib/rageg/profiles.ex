@@ -55,15 +55,15 @@ defmodule Rageg.Profiles do
   end
 
   @doc "Creates a new profile from a directory path and optional display name."
-  @spec create(String.t(), String.t() | nil) :: {:ok, Profile.t()} | {:error, term()}
-  def create(path, name \\ nil) do
-    GenServer.call(__MODULE__, {:create, path, name})
+  @spec create(String.t(), String.t() | nil, timeout()) :: {:ok, Profile.t()} | {:error, term()}
+  def create(path, name \\ nil, timeout \\ :infinity) do
+    GenServer.call(__MODULE__, {:create, path, name}, timeout)
   end
 
   @doc "Deletes a profile by ID."
-  @spec delete(String.t()) :: :ok | {:error, term()}
-  def delete(id) do
-    GenServer.call(__MODULE__, {:delete, id})
+  @spec delete(String.t(), timeout()) :: :ok | {:error, term()}
+  def delete(id, timeout \\ :infinity) do
+    GenServer.call(__MODULE__, {:delete, id}, timeout)
   end
 
   @doc """
@@ -73,9 +73,9 @@ defmodule Rageg.Profiles do
   in-memory active profile, and broadcasts `{:profile_switched, nil}` so
   connected LiveViews update their UI immediately.
   """
-  @spec clear_all!() :: :ok
-  def clear_all! do
-    GenServer.call(__MODULE__, :clear_all)
+  @spec clear_all!(timeout()) :: :ok
+  def clear_all!(timeout \\ :infinity) do
+    GenServer.call(__MODULE__, :clear_all, timeout)
   catch
     :exit, _ -> :ok
   end
@@ -106,12 +106,14 @@ defmodule Rageg.Profiles do
     active_profile = restore_active_profile(dir, all_profiles)
 
     if active_profile do
-      try do
-        Ragex.Graph.Store.load_project(active_profile.path)
-        watch_directory_safely(active_profile.path)
-      rescue
-        _ -> :ok
-      end
+      Task.start(fn ->
+        try do
+          Ragex.Graph.Store.load_project(active_profile.path)
+          watch_directory_safely(active_profile.path)
+        rescue
+          _ -> :ok
+        end
+      end)
     end
 
     state = %{
@@ -153,12 +155,14 @@ defmodule Rageg.Profiles do
             if state.active == nil do
               save_active_profile_id(profile.id, state.profiles_dir)
 
-              try do
-                Ragex.Graph.Store.load_project(profile.path)
-                watch_directory_safely(profile.path)
-              rescue
-                _ -> :ok
-              end
+              Task.start(fn ->
+                try do
+                  Ragex.Graph.Store.load_project(profile.path)
+                  watch_directory_safely(profile.path)
+                rescue
+                  _ -> :ok
+                end
+              end)
 
               Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, profile})
               profile
@@ -190,12 +194,14 @@ defmodule Rageg.Profiles do
             if next_p do
               save_active_profile_id(next_p.id, state.profiles_dir)
 
-              try do
-                Ragex.Graph.Store.load_project(next_p.path)
-                watch_directory_safely(next_p.path)
-              rescue
-                _ -> :ok
-              end
+              Task.start(fn ->
+                try do
+                  Ragex.Graph.Store.load_project(next_p.path)
+                  watch_directory_safely(next_p.path)
+                rescue
+                  _ -> :ok
+                end
+              end)
 
               next_p
             else
