@@ -210,15 +210,26 @@ defmodule Rageg.Graph do
   """
   @spec node_details(String.t()) :: map() | nil
   def node_details(node_id_string) do
-    # Try to find the node by matching both the raw and prettified string ID
-    Store.list_nodes(nil, :infinity)
-    |> Enum.find_value(fn node ->
-      raw = format_id(node)
+    # Try direct lookups first before scanning limited nodes
+    direct_node =
+      Store.find_node(:module, node_id_string) ||
+        Store.find_node(:function, node_id_string) ||
+        Store.find_node(:container, node_id_string)
 
-      if raw == node_id_string or prettify_id(raw) == node_id_string do
-        build_node_details(node, node_id_string)
+    node =
+      if direct_node do
+        direct_node
+      else
+        Store.list_nodes(nil, 1_000)
+        |> Enum.find(fn n ->
+          raw = format_id(n)
+          raw == node_id_string or prettify_id(raw) == node_id_string
+        end)
       end
-    end)
+
+    if node do
+      build_node_details(node, node_id_string)
+    end
   rescue
     _ -> nil
   end
@@ -256,7 +267,7 @@ defmodule Rageg.Graph do
           %{type: Map.get(n, :type) || Map.get(n, :kind), id: n.id, data: data}
         end)
       else
-        Store.list_nodes(nil, :infinity)
+        Store.list_nodes(nil, 2_000)
       end
 
     nodes

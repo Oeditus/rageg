@@ -301,10 +301,17 @@ defmodule Rageg.Assess do
 
   # -- Git helpers --
 
-  # Silently fetch origin so remote tracking branches are available locally.
+  # Silently fetch origin with a 3s timeout so remote tracking branches update without blocking.
   defp fetch_remote(repo_root) do
-    System.cmd("git", ["fetch", "--quiet", "origin"], cd: repo_root, stderr_to_stdout: true)
-    :ok
+    task =
+      Task.async(fn ->
+        System.cmd("git", ["fetch", "--quiet", "origin"], cd: repo_root, stderr_to_stdout: true)
+      end)
+
+    case Task.yield(task, 3_000) || Task.shutdown(task) do
+      {:ok, _} -> :ok
+      _ -> :ok
+    end
   rescue
     _ -> :ok
   end
