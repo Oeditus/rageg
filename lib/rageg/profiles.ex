@@ -110,6 +110,12 @@ defmodule Rageg.Profiles do
         try do
           Ragex.Graph.Store.load_project(active_profile.path)
           watch_directory_safely(active_profile.path)
+
+          if dllb_connected?() do
+            DllbIngestor.ingest(active_profile.path,
+              project_tag: active_profile.dllb_project_tag
+            )
+          end
         rescue
           _ -> :ok
         end
@@ -307,7 +313,10 @@ defmodule Rageg.Profiles do
   defp latest_profile(profiles) do
     Enum.max_by(
       profiles,
-      fn p -> p.last_ingested_at || p.created_at || "" end,
+      fn p ->
+        last = if p.last_ingested_at != "nil", do: p.last_ingested_at, else: nil
+        last || p.created_at || ""
+      end,
       fn -> nil end
     )
   end
@@ -356,7 +365,13 @@ defmodule Rageg.Profiles do
 
   defp save_profile(%Profile{} = profile, dir) do
     file = Path.join(dir, "#{profile.id}.json")
-    json = profile |> Map.from_struct() |> :json.encode() |> IO.iodata_to_binary()
+
+    map =
+      profile
+      |> Map.from_struct()
+      |> Map.new(fn {k, v} -> {k, if(v == nil, do: :null, else: v)} end)
+
+    json = map |> :json.encode() |> IO.iodata_to_binary()
     File.write(file, json)
   end
 

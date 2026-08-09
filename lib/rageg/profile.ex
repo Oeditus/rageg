@@ -42,13 +42,21 @@ defmodule Rageg.Profile do
   @doc "Deserializes a profile from a decoded JSON map."
   @spec from_json(map()) :: t()
   def from_json(map) when is_map(map) do
+    last_ingested =
+      case map["last_ingested_at"] do
+        nil -> nil
+        "nil" -> nil
+        val when is_binary(val) -> val
+        _ -> nil
+      end
+
     %__MODULE__{
       id: map["id"],
       name: map["name"],
       path: map["path"],
       dllb_project_tag: map["dllb_project_tag"],
       created_at: map["created_at"],
-      last_ingested_at: map["last_ingested_at"]
+      last_ingested_at: last_ingested
     }
   end
 
