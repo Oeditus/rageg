@@ -118,30 +118,27 @@ defmodule Rageg.Stats do
   # -- Private --
 
   defp fetch_all do
+    ingested =
+      try do
+        Rageg.Dllb.aggregate_ingest_stats()
+      rescue
+        _ -> %{nodes: 0, edges: 0, projects: 0}
+      end
+
     %{
-      graph: fetch_graph_stats(),
+      graph: fetch_graph_stats(ingested),
       embeddings: fetch_embedding_stats(),
       cache: fetch_cache_stats(),
       ai_usage: fetch_ai_usage(),
-      dllb: fetch_dllb_health(),
+      dllb: fetch_dllb_health(ingested),
       fetched_at: DateTime.utc_now()
     }
   end
 
-  defp fetch_graph_stats do
-    # Node/edge totals come from persisted ingestion stats -- the live
-    # `Ragex.stats()` path runs SELECT id, kind FROM ast_node which returns
-    # ~100K rows as a single JSON line, overflowing the TCP line-packet buffer
-    # and corrupting the connection pool.
-    #
-    # Components, by contrast, are computed server-side via the native
-    # `GRAPH COMPONENTS` statement, which returns only a small summary, so it
-    # is safe to query on every poll. Density is still derived elsewhere.
-    ingested = Rageg.Dllb.aggregate_ingest_stats()
-
+  defp fetch_graph_stats(ingested) do
     %{
-      nodes: ingested.nodes,
-      edges: ingested.edges,
+      nodes: Map.get(ingested, :nodes, 0),
+      edges: Map.get(ingested, :edges, 0),
       density: 0.0,
       components: graph_components()
     }
@@ -236,33 +233,33 @@ defmodule Rageg.Stats do
     _ -> %{total_requests: 0, total_tokens: 0, estimated_cost: 0.0}
   end
 
-  defp fetch_dllb_health do
-    connected = dllb_available?()
-    ingested = Rageg.Dllb.aggregate_ingest_stats()
+  defp fetch_dllb_health(ingested) do
+    {latency_ms, connected} = check_dllb_connection()
 
     %{
       connected: connected,
       pool_size: Application.get_env(:dllb, :pool_size, 0),
-      latency_ms: if(connected, do: measure_dllb_latency(), else: 0),
-      nodes: ingested.nodes,
-      edges: ingested.edges,
-      projects: ingested.projects
+      latency_ms: latency_ms,
+      nodes: Map.get(ingested, :nodes, 0),
+      edges: Map.get(ingested, :edges, 0),
+      projects: Map.get(ingested, :projects, 0)
     }
   rescue
     _ -> %{connected: false, pool_size: 0, latency_ms: 0, nodes: 0, edges: 0, projects: 0}
   end
 
-  defp dllb_available? do
-    Application.get_env(:dllb, :enabled, false) &&
-      match?({:ok, %Dllb.Result.Rows{}}, Dllb.query("SELECT * FROM _dllb_ping_"))
-  rescue
-    _ -> false
-  end
+  defp check_dllb_connection do
+    if Application.get_env(:dllb, :enabled, false) do
+      {microseconds, res} = :timer.tc(fn -> Dllb.query("SELECT * FROM _dllb_ping_") end)
 
-  defp measure_dllb_latency do
-    {microseconds, _} = :timer.tc(fn -> Dllb.query("SELECT * FROM _dllb_ping_") end)
-    div(microseconds, 1_000)
+      case res do
+        {:ok, %Dllb.Result.Rows{}} -> {div(microseconds, 1_000), true}
+        _ -> {0, false}
+      end
+    else
+      {0, false}
+    end
   rescue
-    _ -> 0
+    _ -> {0, false}
   end
 end

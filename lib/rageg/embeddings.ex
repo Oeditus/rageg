@@ -87,47 +87,21 @@ defmodule Rageg.Embeddings do
   def search(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
-    if dllb_backend?() do
-      dllb_search(query, limit)
-    else
-      case Hybrid.search(query, limit: limit, strategy: :semantic_first) do
-        {:ok, results} ->
-          ids =
-            results
-            |> Enum.map(fn result ->
-              format_id(result.node_type, result.node_id)
-            end)
+    case Hybrid.search(query, limit: limit, strategy: :semantic_first) do
+      {:ok, results} ->
+        ids =
+          results
+          |> Enum.map(fn result ->
+            format_id(result.node_type, result.node_id)
+          end)
 
-          {:ok, ids}
+        {:ok, ids}
 
-        _ ->
-          {:ok, []}
-      end
+      _ ->
+        {:ok, []}
     end
   rescue
     _ -> {:ok, []}
-  end
-
-  # On the dllb backend the native vector search returns only kind/name (no
-  # module or arity), so its IDs would not match the scatter point IDs. Rank
-  # the sampled embedding set against the query embedding instead, producing
-  # the same `Module.fun/arity` IDs the plot uses so highlighting lines up.
-  defp dllb_search(query, limit) do
-    with {:ok, query_embedding} <- Ragex.Embeddings.Bumblebee.embed(query) do
-      ids =
-        nil
-        |> list_embeddings(@default_max_points)
-        |> Enum.map(fn {type, id, embedding, _text} ->
-          {format_id(type, id), VectorStore.cosine_similarity(query_embedding, embedding)}
-        end)
-        |> Enum.sort_by(fn {_id, score} -> score end, :desc)
-        |> Enum.take(limit)
-        |> Enum.map(fn {id, _score} -> id end)
-
-      {:ok, ids}
-    else
-      _ -> {:ok, []}
-    end
   end
 
   @doc """
@@ -137,27 +111,39 @@ defmodule Rageg.Embeddings do
   """
   @spec nearest_neighbors(String.t(), non_neg_integer()) :: {:ok, [String.t()]}
   def nearest_neighbors(entity_id, k \\ 5) do
-    # Rank neighbors by cosine similarity within the sampled embedding set.
-    # This works identically for the ETS and dllb backends and, crucially,
-    # yields IDs in the same `Module.fun/arity` shape as the scatter points so
-    # the client can draw connector lines to the displayed neighbors.
     embeddings = list_embeddings(nil, @default_max_points)
 
     case Enum.find(embeddings, fn {type, id, _emb, _text} -> format_id(type, id) == entity_id end) do
-      {_type, _id, source_embedding, _text} ->
-        ids =
-          embeddings
-          |> Enum.map(fn {type, id, embedding, _text} ->
-            {format_id(type, id), VectorStore.cosine_similarity(source_embedding, embedding)}
-          end)
-          |> Enum.reject(fn {id, _score} -> id == entity_id end)
-          |> Enum.sort_by(fn {_id, score} -> score end, :desc)
-          |> Enum.take(k)
-          |> Enum.map(fn {id, _score} -> id end)
+      {_type, _id, source_embedding, _text} when is_list(source_embedding) ->
+        if dllb_backend?() do
+          case VectorStore.search(source_embedding, limit: k + 1) do
+            results when is_list(results) ->
+              ids =
+                results
+                |> Enum.map(fn r -> format_id(r.node_type, r.node_id) end)
+                |> Enum.reject(fn id -> id == entity_id end)
+                |> Enum.take(k)
 
-        {:ok, ids}
+              {:ok, ids}
 
-      nil ->
+            _ ->
+              {:ok, []}
+          end
+        else
+          ids =
+            embeddings
+            |> Enum.map(fn {type, id, embedding, _text} ->
+              {format_id(type, id), VectorStore.cosine_similarity(source_embedding, embedding)}
+            end)
+            |> Enum.reject(fn {id, _score} -> id == entity_id end)
+            |> Enum.sort_by(fn {_id, score} -> score end, :desc)
+            |> Enum.take(k)
+            |> Enum.map(fn {id, _score} -> id end)
+
+          {:ok, ids}
+        end
+
+      _ ->
         {:ok, []}
     end
   rescue
