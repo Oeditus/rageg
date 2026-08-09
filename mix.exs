@@ -60,7 +60,11 @@ defmodule Rageg.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:egit, "~> 0.2"}
+      {:egit, "~> 0.2"},
+      {:mdex_multiline_cells, "~> 0.1"},
+      {:mdex_gfm, "~> 0.1"},
+      {:mdex_mermaid, "~> 0.1"},
+      {:mdex_katex, "~> 0.1"}
       # Always use local path deps in development; hex versions for prod releases.
       # The walk_tree infinite-loop fix in dllb_ex and the Store backend
       # delegation fix in ragex are required for rageg to function correctly.

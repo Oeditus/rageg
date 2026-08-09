@@ -308,14 +308,16 @@ defmodule RagegWeb.ChatLive do
   defp render_markdown(text) do
     case Code.ensure_loaded(MDEx) do
       {:module, MDEx} ->
-        try do
-          text
-          |> insert_intermediate_links()
-          |> MDEx.to_html!()
-          |> convert_ide_links()
-          |> Phoenix.HTML.raw()
-        rescue
-          _ -> text
+        case text
+             |> insert_intermediate_links()
+             |> MDEx.to_html(plugins: [MDExGFM, MDExMermaid, MDExKatex, MdexMultilineCells]) do
+          {:ok, html} ->
+            html
+            |> convert_ide_links()
+            |> Phoenix.HTML.raw()
+
+          {:error, _} ->
+            text
         end
 
       _ ->

@@ -444,11 +444,14 @@ defmodule RagegWeb.AssessLive do
   defp render_markdown(nil), do: ""
 
   defp render_markdown(markdown) do
-    MDEx.to_html!(markdown)
-  rescue
-    _ ->
-      markdown
-      |> Phoenix.HTML.html_escape()
-      |> Phoenix.HTML.safe_to_string()
+    case MDEx.to_html(markdown, plugins: [MDExGFM, MDExMermaid, MDExKatex, MdexMultilineCells]) do
+      {:ok, html} ->
+        html
+
+      {:error, _reason} ->
+        markdown
+        |> Phoenix.HTML.html_escape()
+        |> Phoenix.HTML.safe_to_string()
+    end
   end
 end
