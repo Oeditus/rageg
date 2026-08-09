@@ -21,6 +21,14 @@ defmodule Rageg.Graph do
 
   alias Ragex.Graph.{Algorithms, Store}
 
+  @sanitize_re ~r/[^a-zA-Z0-9_]/
+  @pretty_func_id_re ~r/^[A-Z][\w.]*\.\w+\/\d+$/
+  @pretty_mod_id_re ~r/^[A-Z][\w.]*$/
+  @tuple_4_re ~r/^\{:\w+,\s*([^,]+),\s*:?(\w+),\s*(\d+)\}$/
+  @tuple_2_re ~r/^\{:\w+,\s*([A-Z][\w.]*)\}$/
+  @type_colon_re ~r/^\w+:(.+)$/
+  @cap_start_re ~r/^[A-Z]/
+
   @type metric :: :pagerank | :betweenness | :closeness | :degree | :community
   @type layout :: :force | :hierarchical | :circular
 
@@ -331,9 +339,9 @@ defmodule Rageg.Graph do
         file_path
         |> Path.basename()
         |> Path.rootname()
-        |> String.replace(~r/[^a-zA-Z0-9_]/, "_")
+        |> String.replace(@sanitize_re, "_")
 
-      sanitized_name = String.replace(name, ~r/[^a-zA-Z0-9_]/, "_")
+      sanitized_name = String.replace(name, @sanitize_re, "_")
       "ast_node:#{file_stem}_#{sanitized_name}_#{line}"
     end
   end
@@ -423,26 +431,26 @@ defmodule Rageg.Graph do
     result =
       cond do
         # Already in Module.fun/arity format
-        Regex.match?(~r/^[A-Z][\w.]*\.\w+\/\d+$/, id) ->
+        Regex.match?(@pretty_func_id_re, id) ->
           id
 
         # Already a clean module name
-        Regex.match?(~r/^[A-Z][\w.]*$/, id) ->
+        Regex.match?(@pretty_mod_id_re, id) ->
           id
 
         # Inspected 4-tuple: {:type, Module, :name, arity}
-        match = Regex.run(~r/^\{:\w+,\s*([^,]+),\s*:?(\w+),\s*(\d+)\}$/, id) ->
+        match = Regex.run(@tuple_4_re, id) ->
           [_, mod_raw, name, arity] = match
           mod = mod_raw |> String.trim() |> String.replace_prefix("Elixir.", "")
           "#{mod}.#{name}/#{arity}"
 
         # Inspected 2-tuple: {:type, Module}
-        match = Regex.run(~r/^\{:\w+,\s*([A-Z][\w.]*)\}$/, id) ->
+        match = Regex.run(@tuple_2_re, id) ->
           [_, mod] = match
           String.replace_prefix(mod, "Elixir.", "")
 
         # Colon-separated format: type:rest_Module_fun_N
-        match = Regex.run(~r/^\w+:(.+)$/, id) ->
+        match = Regex.run(@type_colon_re, id) ->
           [_, rest] = match
           parse_underscore_encoded(rest)
 
@@ -460,14 +468,14 @@ defmodule Rageg.Graph do
     parts = String.split(rest, "_")
 
     # Find the first capitalized part (module start)
-    case Enum.split_while(parts, fn p -> not String.match?(p, ~r/^[A-Z]/) end) do
+    case Enum.split_while(parts, fn p -> not String.match?(p, @cap_start_re) end) do
       {_prefix, []} ->
         rest
 
       {_prefix, mod_and_rest} ->
         # Split: capitalized segments = module, then lowercase = fun, trailing digit = arity
         {mod_parts, after_mod} =
-          Enum.split_while(mod_and_rest, fn p -> String.match?(p, ~r/^[A-Z]/) end)
+          Enum.split_while(mod_and_rest, fn p -> String.match?(p, @cap_start_re) end)
 
         module = Enum.join(mod_parts, ".")
 
