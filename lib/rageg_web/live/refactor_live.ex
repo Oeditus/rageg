@@ -52,7 +52,7 @@ defmodule RagegWeb.RefactorLive do
     new_params =
       params
       |> Map.drop(["_target", "_csrf_token"])
-      |> Map.new(fn {k, v} -> {String.to_atom(k), parse_param_value(v)} end)
+      |> Map.new(fn {k, v} -> {safe_key_atom(k), parse_param_value(v)} end)
 
     {:noreply,
      assign(socket, params: Map.merge(socket.assigns.params, new_params), preview_result: nil)}
@@ -300,4 +300,12 @@ defmodule RagegWeb.RefactorLive do
   end
 
   defp parse_param_value(val), do: val
+
+  defp safe_key_atom(key) when is_binary(key) do
+    try do
+      String.to_existing_atom(key)
+    rescue
+      ArgumentError -> String.to_atom(key)
+    end
+  end
 end

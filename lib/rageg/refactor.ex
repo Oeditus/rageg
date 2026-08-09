@@ -278,7 +278,7 @@ defmodule Rageg.Refactor do
     # Ensure keys are atoms
     params =
       Map.new(params, fn
-        {k, v} when is_binary(k) -> {String.to_atom(k), v}
+        {k, v} when is_binary(k) -> {safe_atom(k), v}
         {k, v} -> {k, v}
       end)
 
@@ -767,11 +767,14 @@ defmodule Rageg.Refactor do
   defp normalize_module(module_str) when is_binary(module_str) do
     module_str = String.trim(module_str)
 
-    if String.starts_with?(module_str, "Elixir.") do
-      String.to_atom(module_str)
-    else
-      String.to_atom("Elixir." <> module_str)
-    end
+    full =
+      if String.starts_with?(module_str, "Elixir.") do
+        module_str
+      else
+        "Elixir." <> module_str
+      end
+
+    safe_atom(full)
   end
 
   defp normalize_module(module_atom) when is_atom(module_atom) do
@@ -779,9 +782,18 @@ defmodule Rageg.Refactor do
   end
 
   defp to_atom(val) when is_atom(val), do: val
+  defp to_atom(val) when is_binary(val), do: safe_atom(val)
 
-  defp to_atom(val) when is_binary(val) do
-    val |> String.trim() |> String.to_atom()
+  defp safe_atom(val) when is_atom(val), do: val
+
+  defp safe_atom(val) when is_binary(val) do
+    trimmed = String.trim(val)
+
+    try do
+      String.to_existing_atom(trimmed)
+    rescue
+      ArgumentError -> String.to_atom(trimmed)
+    end
   end
 
   defp parse_new_params(new_params_str, old_arity) do
@@ -832,10 +844,10 @@ defmodule Rageg.Refactor do
     |> Enum.map(fn entry ->
       case String.split(entry, "/") do
         [name, arity_str] ->
-          {String.to_atom(name), String.to_integer(arity_str)}
+          {safe_atom(name), String.to_integer(arity_str)}
 
         [name] ->
-          {String.to_atom(name), 0}
+          {safe_atom(name), 0}
       end
     end)
   end

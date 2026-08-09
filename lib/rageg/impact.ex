@@ -142,20 +142,28 @@ defmodule Rageg.Impact do
 
         case String.split(path, ".") |> Enum.split(-1) do
           {mod_parts, [func]} ->
-            module = mod_parts |> Enum.join(".") |> String.to_atom()
-            {:function, module, String.to_atom(func), arity}
+            module = mod_parts |> Enum.join(".") |> safe_atom()
+            {:function, module, safe_atom(func), arity}
 
           _ ->
-            {:function, String.to_atom(path), :unknown, arity}
+            {:function, safe_atom(path), :unknown, arity}
         end
 
       true ->
         # Plain module name
-        {:module, String.to_atom(target)}
+        {:module, safe_atom(target)}
     end
   end
 
   defp parse_node_ref(target), do: target
+
+  defp safe_atom(str) when is_binary(str) do
+    try do
+      String.to_existing_atom(str)
+    rescue
+      ArgumentError -> String.to_atom(str)
+    end
+  end
 
   defp format_ref({:function, mod, name, arity}), do: "#{mod}.#{name}/#{arity}"
   defp format_ref({:module, name}), do: "#{name}"

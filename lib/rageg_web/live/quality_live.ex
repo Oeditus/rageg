@@ -64,7 +64,13 @@ defmodule RagegWeb.QualityLive do
 
     {:noreply,
      socket
-     |> assign(items: items, loading: false, summary: summary, active_tab: tab, analysis_path: path)}
+     |> assign(
+       items: items,
+       loading: false,
+       summary: summary,
+       active_tab: tab,
+       analysis_path: path
+     )}
   end
 
   # -- Render --
