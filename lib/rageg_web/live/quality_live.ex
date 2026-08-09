@@ -50,11 +50,21 @@ defmodule RagegWeb.QualityLive do
 
   def handle_info({:load_tab, tab, path}, socket) do
     items = fetch_tab_data(tab, path)
-    summary = if path, do: Quality.summary(path), else: nil
+
+    summary =
+      if path do
+        if socket.assigns[:analysis_path] == path and socket.assigns[:summary] do
+          socket.assigns.summary
+        else
+          Quality.summary(path)
+        end
+      else
+        nil
+      end
 
     {:noreply,
      socket
-     |> assign(items: items, loading: false, summary: summary, active_tab: tab)}
+     |> assign(items: items, loading: false, summary: summary, active_tab: tab, analysis_path: path)}
   end
 
   # -- Render --
