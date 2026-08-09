@@ -33,7 +33,8 @@ defmodule RagegWeb.MetacredoLive do
      |> assign(page: 1)
      |> assign(per_page: 50)
      |> assign(result: cached_result)
-     |> assign(error: nil)}
+     |> assign(error: nil)
+     |> assign_filtered_issues()}
   end
 
   @impl Phoenix.LiveView
@@ -47,11 +48,17 @@ defmodule RagegWeb.MetacredoLive do
   end
 
   def handle_event("filter_category", %{"category" => cat}, socket) do
-    {:noreply, assign(socket, selected_category: cat, page: 1)}
+    {:noreply,
+     socket
+     |> assign(selected_category: cat, page: 1)
+     |> assign_filtered_issues()}
   end
 
   def handle_event("update_search", %{"query" => q}, socket) do
-    {:noreply, assign(socket, search_query: q, page: 1)}
+    {:noreply,
+     socket
+     |> assign(search_query: q, page: 1)
+     |> assign_filtered_issues()}
   end
 
   def handle_event("change_page", %{"page" => page_str}, socket) do
@@ -87,11 +94,18 @@ defmodule RagegWeb.MetacredoLive do
   def handle_info({:rageg_profile_changed, profile}, socket) do
     path = (profile && profile.path) || ""
     cached_result = Metacredo.get_cached_result(path)
-    {:noreply, assign(socket, project_path: path, result: cached_result, page: 1, error: nil)}
+
+    {:noreply,
+     socket
+     |> assign(project_path: path, result: cached_result, page: 1, error: nil)
+     |> assign_filtered_issues()}
   end
 
   def handle_info({:analysis_complete, {:ok, result}}, socket) do
-    {:noreply, assign(socket, running: false, result: result, page: 1, error: nil)}
+    {:noreply,
+     socket
+     |> assign(running: false, result: result, page: 1, error: nil)
+     |> assign_filtered_issues()}
   end
 
   def handle_info({:analysis_complete, {:error, reason}}, socket) do
@@ -100,6 +114,15 @@ defmodule RagegWeb.MetacredoLive do
 
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket) do
     {:noreply, assign(socket, running: false)}
+  end
+
+  defp assign_filtered_issues(socket) do
+    issues = (socket.assigns.result && socket.assigns.result.issues) || []
+    category = socket.assigns[:selected_category] || "all"
+    query = socket.assigns[:search_query] || ""
+
+    filtered = filter_issues(issues, category, query)
+    assign(socket, filtered_issues: filtered)
   end
 
   @impl Phoenix.LiveView
@@ -236,13 +259,12 @@ defmodule RagegWeb.MetacredoLive do
         </div>
 
         <%!-- Issues List --%>
-        <% filtered = filter_issues(@result.issues, @selected_category, @search_query) %>
-        <% total_filtered = length(filtered) %>
+        <% total_filtered = length(@filtered_issues) %>
         <% total_pages = max(1, ceil(total_filtered / @per_page)) %>
         <% current_page = min(@page, total_pages) %>
-        <% paged_issues = Enum.slice(filtered, (current_page - 1) * @per_page, @per_page) %>
+        <% paged_issues = Enum.slice(@filtered_issues, (current_page - 1) * @per_page, @per_page) %>
 
-        <div :if={filtered == []} class="card bg-base-200 border border-base-300 text-center p-8">
+        <div :if={@filtered_issues == []} class="card bg-base-200 border border-base-300 text-center p-8">
           <.icon name="hero-check-circle" class="size-12 text-success mx-auto mb-3" />
           <h3 class="font-bold text-lg">{gettext("No issues found")}</h3>
           <p class="text-xs text-base-content/60 mt-1">
@@ -250,7 +272,7 @@ defmodule RagegWeb.MetacredoLive do
           </p>
         </div>
 
-        <div :if={filtered != []} class="space-y-3" id="metacredo-issues-list">
+        <div :if={@filtered_issues != []} class="space-y-3" id="metacredo-issues-list">
           <%!-- Pagination bar top --%>
           <div :if={total_pages > 1} class="flex items-center justify-between bg-base-200 px-4 py-2 rounded-xl border border-base-300 text-xs" id="metacredo-pagination-top">
             <span class="text-base-content/60 font-mono">
