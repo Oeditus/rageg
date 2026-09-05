@@ -123,10 +123,84 @@ defmodule Rageg.MCP do
   end
 
   @doc """
-  Filters the list of MCP tools matching a query string.
+  Returns the Unix Domain Socket path computed by `Ragex.MCP.SocketPath`.
   """
-  @spec filter_tools([tool_schema()], String.t()) :: [tool_schema()]
-  def filter_tools(tools, query) when is_list(tools) and is_binary(query) do
+  @spec socket_path() :: String.t()
+  def socket_path do
+    Ragex.MCP.SocketPath.compute_string()
+  rescue
+    _ -> "/tmp/ragex_mcp.sock"
+  end
+
+  @doc """
+  Lists all available MCP resources exported by Ragex.
+  """
+  @spec list_resources() :: [map()]
+  def list_resources do
+    res = Ragex.MCP.Handlers.Resources.list_resources()
+    Map.get(res, :resources, [])
+  rescue
+    _ -> []
+  end
+
+  @doc """
+  Reads a specific MCP resource by URI.
+  """
+  @spec read_resource(String.t()) :: {:ok, term()} | {:error, term()}
+  def read_resource(uri) when is_binary(uri) do
+    Ragex.MCP.Handlers.Resources.read_resource(uri)
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Lists all available MCP prompts exported by Ragex.
+  """
+  @spec list_prompts() :: [map()]
+  def list_prompts do
+    res = Ragex.MCP.Handlers.Prompts.list_prompts()
+    Map.get(res, :prompts, [])
+  rescue
+    _ -> []
+  end
+
+  @doc """
+  Returns the 10 read-only RAG query tool names.
+  """
+  @spec rag_tool_names() :: [String.t()]
+  def rag_tool_names do
+    Ragex.Agent.ToolSchema.rag_tool_names()
+  rescue
+    _ ->
+      [
+        "read_file",
+        "semantic_search",
+        "hybrid_search",
+        "query_graph",
+        "list_nodes",
+        "find_callers",
+        "find_paths",
+        "find_circular_dependencies",
+        "coupling_report",
+        "graph_stats"
+      ]
+  end
+
+  @doc """
+  Filters the list of MCP tools matching a query string and category filter.
+  """
+  @spec filter_tools([tool_schema()], String.t(), String.t() | atom()) :: [tool_schema()]
+  def filter_tools(tools, query, category \\ "all")
+
+  def filter_tools(tools, query, category) when is_list(tools) and is_binary(query) do
+    cat_str = to_string(category)
+
+    tools
+    |> Enum.filter(&matches_category?(&1, cat_str))
+    |> filter_by_query(query)
+  end
+
+  defp filter_by_query(tools, query) do
     q = String.downcase(String.trim(query))
 
     if q == "" do
@@ -139,6 +213,43 @@ defmodule Rageg.MCP do
       end)
     end
   end
+
+  defp matches_category?(_tool, "all"), do: true
+
+  defp matches_category?(tool, "rag") do
+    tool.name in rag_tool_names()
+  end
+
+  defp matches_category?(tool, "git") do
+    String.starts_with?(tool.name, "git_") or String.starts_with?(tool.name, "co_change_")
+  end
+
+  defp matches_category?(tool, "image") do
+    String.starts_with?(tool.name, "image_")
+  end
+
+  defp matches_category?(tool, "scip") do
+    String.starts_with?(tool.name, "scip_")
+  end
+
+  defp matches_category?(tool, "refactor") do
+    name = tool.name
+
+    String.contains?(name, "refactor") or String.contains?(name, "edit") or
+      String.contains?(name, "preview") or String.contains?(name, "rollback") or
+      String.contains?(name, "undo")
+  end
+
+  defp matches_category?(tool, "quality") do
+    name = tool.name
+
+    String.contains?(name, "quality") or String.contains?(name, "security") or
+      String.contains?(name, "smell") or String.contains?(name, "dead_code") or
+      String.contains?(name, "duplicate") or String.contains?(name, "complexity") or
+      String.contains?(name, "business_logic")
+  end
+
+  defp matches_category?(_tool, _category), do: true
 
   # Helpers
 

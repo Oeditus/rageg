@@ -95,6 +95,8 @@ defmodule Rageg.Profiles do
     GenServer.call(__MODULE__, {:switch, id, opts}, :infinity)
   end
 
+  require Logger
+
   # -- Server Callbacks --
 
   @impl GenServer
@@ -107,18 +109,7 @@ defmodule Rageg.Profiles do
 
     if active_profile do
       Task.start(fn ->
-        try do
-          Ragex.Graph.Store.load_project(active_profile.path)
-          watch_directory_safely(active_profile.path)
-
-          if dllb_connected?() do
-            DllbIngestor.ingest(active_profile.path,
-              project_tag: active_profile.dllb_project_tag
-            )
-          end
-        rescue
-          _ -> :ok
-        end
+        activate_project(active_profile, fn _ -> :ok end)
       end)
     end
 
@@ -162,12 +153,10 @@ defmodule Rageg.Profiles do
               save_active_profile_id(profile.id, state.profiles_dir)
 
               Task.start(fn ->
-                try do
-                  Ragex.Graph.Store.load_project(profile.path)
-                  watch_directory_safely(profile.path)
-                rescue
-                  _ -> :ok
-                end
+                activate_project(profile, fn _ -> :ok end)
+                ready = Profile.mark_ingested(profile)
+                save_profile(ready, state.profiles_dir)
+                Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready})
               end)
 
               Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, profile})
@@ -201,12 +190,10 @@ defmodule Rageg.Profiles do
               save_active_profile_id(next_p.id, state.profiles_dir)
 
               Task.start(fn ->
-                try do
-                  Ragex.Graph.Store.load_project(next_p.path)
-                  watch_directory_safely(next_p.path)
-                rescue
-                  _ -> :ok
-                end
+                activate_project(next_p, fn _ -> :ok end)
+                ready = Profile.mark_ingested(next_p)
+                save_profile(ready, state.profiles_dir)
+                Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready})
               end)
 
               next_p
@@ -250,33 +237,93 @@ defmodule Rageg.Profiles do
         {:reply, {:error, :profile_not_found}, state}
 
       profile ->
-        # Switch in-memory graph, vector store, and file-tracker state to target project
-        Ragex.Graph.Store.load_project(profile.path)
+        indexing_profile = Profile.mark_indexing(profile)
+        save_profile(indexing_profile, state.profiles_dir)
+        save_active_profile_id(indexing_profile.id, state.profiles_dir)
 
-        # Watch active project directory for incremental updates when files change
-        watch_directory_safely(profile.path)
+        Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, indexing_profile})
 
-        # Ingest into dllb (idempotent upserts)
-        if dllb_connected?() do
-          DllbIngestor.ingest(profile.path,
-            project_tag: profile.dllb_project_tag,
-            on_progress: on_progress
-          )
-        else
-          on_progress.("dllb not connected, skipping ingestion")
-        end
+        activate_project(indexing_profile, on_progress)
 
-        # Mark as ingested and save
-        updated = Profile.mark_ingested(profile)
-        save_profile(updated, state.profiles_dir)
-        save_active_profile_id(updated.id, state.profiles_dir)
+        ready_profile = Profile.mark_ingested(indexing_profile)
+        save_profile(ready_profile, state.profiles_dir)
 
-        # Broadcast
-        Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, updated})
-        on_progress.("Profile active: #{updated.name}")
+        Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready_profile})
+        on_progress.("Profile active: #{ready_profile.name}")
 
-        {:reply, {:ok, updated}, %{state | active: updated}}
+        {:reply, {:ok, ready_profile}, %{state | active: ready_profile}}
     end
+  end
+
+  defp activate_project(%Profile{} = profile, on_progress) do
+    # 1. Change process working directory and system environment to project path
+    if File.dir?(profile.path) do
+      if Mix.env() != :test do
+        try do
+          File.cd!(profile.path)
+        rescue
+          e -> Logger.warning("Failed to change CWD to #{profile.path}: #{Exception.message(e)}")
+        end
+      end
+
+      System.put_env("RAGEX_PROJECT", profile.path)
+      System.put_env("RAGEX_AUTO_ANALYZE", profile.path)
+    end
+
+    # 2. Configure per-project dllb mode & initialize dllb for this project
+    on_progress.("Initializing per-project dllb server...")
+    Application.put_env(:ragex, :dllb_mode, :per_project)
+    Application.put_env(:dllb, :enabled, true)
+
+    if Code.ensure_loaded?(Ragex.Dllb.ProjectManager) and
+         Process.whereis(Ragex.Dllb.ProjectManager) do
+      case Ragex.Dllb.ProjectManager.set_active_project(profile.path) do
+        :ok ->
+          on_progress.("Per-project dllb active: #{profile.path}")
+
+        {:error, reason} ->
+          on_progress.("per-project dllb notice: #{inspect(reason)}")
+      end
+    end
+
+    # 3. Load & index project with Ragex
+    on_progress.("Indexing project files with Ragex...")
+    Ragex.Graph.Store.load_project(profile.path)
+    watch_directory_safely(profile.path)
+
+    # 4. Ingest graph into per-project dllb
+    if dllb_connected?() do
+      on_progress.("Ingesting graph into per-project dllb...")
+
+      DllbIngestor.ingest(profile.path,
+        project_tag: profile.dllb_project_tag,
+        on_progress: on_progress
+      )
+    end
+
+    # 5. Index embeddings via Bumblebee if available
+    if Code.ensure_loaded?(Ragex.Embeddings.Bumblebee) and Ragex.Embeddings.Bumblebee.available?() do
+      on_progress.("Indexing Bumblebee embeddings...")
+      wait_for_bumblebee_ready()
+    end
+
+    on_progress.("Project ready")
+    :ok
+  rescue
+    e ->
+      on_progress.("Activation notice: #{Exception.message(e)}")
+      {:error, Exception.message(e)}
+  end
+
+  defp wait_for_bumblebee_ready(deadline \\ System.monotonic_time(:millisecond) + 3_000) do
+    if Ragex.Embeddings.Bumblebee.ready?() or System.monotonic_time(:millisecond) >= deadline do
+      :ok
+    else
+      Process.sleep(50)
+      wait_for_bumblebee_ready(deadline)
+    end
+  rescue
+    _ -> :ok
   end
 
   # -- Private --
@@ -376,10 +423,7 @@ defmodule Rageg.Profiles do
   end
 
   defp dllb_connected? do
-    Application.get_env(:dllb, :enabled, false) &&
-      match?({:ok, _}, Dllb.query("SELECT 1"))
-  rescue
-    _ -> false
+    Rageg.Dllb.connected?()
   end
 
   defp watch_directory_safely(path) do

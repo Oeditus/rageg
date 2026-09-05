@@ -192,7 +192,7 @@ defmodule Rageg.Profiles.DllbIngestor do
   end
 
   defp bootstrap_schema! do
-    case Dllb.Schema.bootstrap(&Dllb.query/1) do
+    case Dllb.Schema.bootstrap(&Rageg.Dllb.query/1) do
       {:ok, _} ->
         mark_schema_bootstrapped()
         :ok
@@ -238,7 +238,7 @@ defmodule Rageg.Profiles.DllbIngestor do
           :batch_nodes,
           %{path: file_path, count: length(all_queries)},
           fn ->
-            case Dllb.batch_transaction(all_queries) do
+            case Rageg.Dllb.batch_transaction(all_queries) do
               {:ok, %Dllb.Result.Batch{created: created, updated: updated}} ->
                 {created + updated, length(relates)}
 

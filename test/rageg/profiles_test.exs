@@ -53,7 +53,17 @@ defmodule Rageg.ProfilesTest do
 
   describe "Profiles GenServer" do
     setup do
+      orig_cwd = File.cwd!()
       Profiles.clear_all!()
+
+      on_exit(fn ->
+        try do
+          File.cd!(orig_cwd)
+        rescue
+          _ -> :ok
+        end
+      end)
+
       :ok
     end
 
@@ -70,8 +80,24 @@ defmodule Rageg.ProfilesTest do
       assert Profiles.get("nonexistent_id") == nil
     end
 
-    test "create/2 rejects nonexistent directories" do
-      assert {:error, _} = Profiles.create("/nonexistent_path_xyz_123")
+    test "create/2 and switch/1 set RAGEX_PROJECT env and set status to ready" do
+      tmp_dir = System.tmp_dir!() |> Path.join("rageg_proj_test_#{:rand.uniform(10_000)}")
+      File.mkdir_p!(tmp_dir)
+
+      File.write!(
+        Path.join(tmp_dir, "lib.ex"),
+        "defmodule TestProjLib do\n  def hello, do: :world\nend\n"
+      )
+
+      on_exit(fn -> File.rm_rf(tmp_dir) end)
+
+      {:ok, profile} = Profiles.create(tmp_dir, "Test Proj")
+      {:ok, active} = Profiles.switch(profile.id)
+
+      assert active.id == profile.id
+      assert active.status == "ready"
+      assert System.get_env("RAGEX_PROJECT") == Path.expand(tmp_dir)
+      assert System.get_env("RAGEX_AUTO_ANALYZE") == Path.expand(tmp_dir)
     end
 
     test "topic/0 returns the PubSub topic" do

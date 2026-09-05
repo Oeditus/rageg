@@ -28,13 +28,17 @@ defmodule RagegWeb.McpLive do
     initial_args = default_arguments(selected_tool, active_path)
     json_input = Jason.encode!(initial_args, pretty: true)
 
+    socket_path = MCP.socket_path()
+
     {:ok,
      socket
      |> assign(page_title: gettext("MCP Tools Runner"))
      |> assign(current_path: "/mcp")
      |> assign(project_path: active_path)
+     |> assign(socket_path: socket_path)
      |> assign(tools: tools)
      |> assign(search_query: "")
+     |> assign(category: "all")
      |> assign(selected_tool: selected_tool)
      |> assign(mode: :form)
      |> assign(form_args: initial_args)
@@ -48,6 +52,10 @@ defmodule RagegWeb.McpLive do
   @impl Phoenix.LiveView
   def handle_event("search_tools", %{"query" => q}, socket) do
     {:noreply, assign(socket, search_query: q)}
+  end
+
+  def handle_event("select_category", %{"category" => cat}, socket) do
+    {:noreply, assign(socket, category: cat)}
   end
 
   def handle_event("select_tool", %{"name" => name}, socket) do
@@ -185,7 +193,11 @@ defmodule RagegWeb.McpLive do
             {gettext("Interactively execute exported Ragex Model Context Protocol (MCP) tools.")}
           </p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="badge badge-neutral badge-outline text-[11px] font-mono" title={gettext("Unix Domain Socket Path")}>
+            <.icon name="hero-cpu-chip" class="size-3.5 mr-1" />
+            {@socket_path}
+          </span>
           <span class="badge badge-primary badge-outline text-xs font-mono font-semibold">
             {length(@tools)} {gettext("tools registered")}
           </span>
@@ -210,7 +222,30 @@ defmodule RagegWeb.McpLive do
                 />
               </div>
 
-              <% filtered = MCP.filter_tools(@tools, @search_query) %>
+              <%!-- Category Filter Pills --%>
+              <div class="flex flex-wrap gap-1 border-b border-base-300 pb-2">
+                <button
+                  :for={cat <- [
+                    {"all", gettext("All")},
+                    {"rag", gettext("RAG")},
+                    {"refactor", gettext("Refactor")},
+                    {"quality", gettext("Quality")},
+                    {"git", gettext("Git")},
+                    {"image", gettext("Image")},
+                    {"scip", gettext("SCIP")}
+                  ]}
+                  class={[
+                    "btn btn-xs rounded-full font-mono text-[10px]",
+                    if(@category == elem(cat, 0), do: "btn-primary", else: "btn-ghost")
+                  ]}
+                  phx-click="select_category"
+                  phx-value-category={elem(cat, 0)}
+                >
+                  {elem(cat, 1)}
+                </button>
+              </div>
+
+              <% filtered = MCP.filter_tools(@tools, @search_query, @category) %>
               <div class="divide-y divide-base-300 max-h-[600px] overflow-y-auto pr-1" id="mcp-tools-list">
                 <button
                   :for={tool <- filtered}

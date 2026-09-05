@@ -66,6 +66,7 @@ defmodule Rageg.DllbTest do
 
   describe "connected?/0" do
     test "returns false when dllb is not enabled" do
+      Application.put_env(:dllb, :enabled, false)
       refute Dllb.connected?()
     end
   end

@@ -14,11 +14,11 @@ defmodule Rageg.Dllb do
   # SurrealDB-style RELATE edge tables that must be wiped on full reset.
   @edge_tables ~w[calls contains imports type_ref inherits defines]
 
-  @doc "Returns true if dllb pool is enabled and reachable."
+  @doc "Returns true if dllb pool is enabled and reachable for the active project."
   @spec connected?() :: boolean()
   def connected? do
     Application.get_env(:dllb, :enabled, false) &&
-      match?({:ok, %Dllb.Result.Rows{}}, Dllb.query("SELECT * FROM _dllb_ping_"))
+      match?({:ok, %Dllb.Result.Rows{}}, query("SELECT * FROM _dllb_ping_"))
   rescue
     _ -> false
   end
@@ -112,7 +112,7 @@ defmodule Rageg.Dllb do
     tables = ["ast_node", "_edge_idx" | @edge_tables]
 
     Enum.each(tables, fn table ->
-      case Dllb.query("DELETE #{table}") do
+      case query("DELETE #{table}") do
         {:ok, _} ->
           :ok
 
@@ -137,13 +137,23 @@ defmodule Rageg.Dllb do
   end
 
   @doc """
-  Executes a raw query against the dllb server.
+  Executes a query against the active per-project or global dllb instance.
 
   Returns `{:ok, result}` or `{:error, reason}`.
   """
-  @spec query(String.t()) :: {:ok, term()} | {:error, term()}
-  def query(query_string) do
-    Dllb.query(query_string)
+  @spec query(String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  def query(query_string, opts \\ []) do
+    Ragex.Store.Backend.Dllb.query(query_string, opts)
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Executes a batch transaction against the active per-project or global dllb instance.
+  """
+  @spec batch_transaction([String.t()], keyword()) :: {:ok, term()} | {:error, term()}
+  def batch_transaction(query_strings, opts \\ []) do
+    Ragex.Store.Backend.Dllb.batch_transaction(query_strings, opts)
   rescue
     e -> {:error, Exception.message(e)}
   end

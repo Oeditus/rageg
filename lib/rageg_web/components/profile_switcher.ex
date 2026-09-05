@@ -130,6 +130,8 @@ defmodule RagegWeb.ProfileSwitcher do
         <span class="max-w-32 truncate">
           {if @active, do: @active.name, else: gettext("No project")}
         </span>
+        <span :if={@active && Map.get(@active, :status) == "ready"} class="size-2 rounded-full bg-success inline-block shrink-0" title={gettext("Ready")}></span>
+        <span :if={@active && Map.get(@active, :status) == "indexing"} class="loading loading-spinner loading-xs text-primary shrink-0" title={gettext("Indexing...")}></span>
         <.icon name="hero-chevron-down" class="size-3" />
       </button>
 

@@ -36,7 +36,42 @@ defmodule Rageg.MCPTest do
     end
   end
 
-  describe "filter_tools/2" do
+  describe "socket_path/0" do
+    test "returns the Unix domain socket path string" do
+      path = MCP.socket_path()
+      assert is_binary(path)
+      assert String.contains?(path, "ragex_mcp") or String.contains?(path, ".sock")
+    end
+  end
+
+  describe "list_resources/0" do
+    test "returns exported MCP resources" do
+      resources = MCP.list_resources()
+      assert is_list(resources)
+      assert length(resources) > 0
+      first = List.first(resources)
+      assert Map.has_key?(first, :uri) or Map.has_key?(first, "uri")
+    end
+  end
+
+  describe "list_prompts/0" do
+    test "returns exported MCP prompts" do
+      prompts = MCP.list_prompts()
+      assert is_list(prompts)
+    end
+  end
+
+  describe "rag_tool_names/0" do
+    test "returns 10 RAG tool names" do
+      names = MCP.rag_tool_names()
+      assert is_list(names)
+      assert length(names) == 10
+      assert "read_file" in names
+      assert "hybrid_search" in names
+    end
+  end
+
+  describe "filter_tools/3" do
     test "filters tools by query string" do
       tools = MCP.list_tools()
       filtered = MCP.filter_tools(tools, "search")
@@ -47,6 +82,13 @@ defmodule Rageg.MCPTest do
                String.contains?(String.downcase(t.name), "search") or
                  String.contains?(String.downcase(t.description), "search")
              end)
+    end
+
+    test "filters tools by category" do
+      tools = MCP.list_tools()
+      rag_tools = MCP.filter_tools(tools, "", "rag")
+      assert is_list(rag_tools)
+      assert Enum.all?(rag_tools, fn t -> t.name in MCP.rag_tool_names() end)
     end
   end
 end

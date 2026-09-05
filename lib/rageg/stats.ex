@@ -250,7 +250,7 @@ defmodule Rageg.Stats do
 
   defp check_dllb_connection do
     if Application.get_env(:dllb, :enabled, false) do
-      {microseconds, res} = :timer.tc(fn -> Dllb.query("SELECT * FROM _dllb_ping_") end)
+      {microseconds, res} = :timer.tc(fn -> Rageg.Dllb.query("SELECT * FROM _dllb_ping_") end)
 
       case res do
         {:ok, %Dllb.Result.Rows{}} -> {div(microseconds, 1_000), true}

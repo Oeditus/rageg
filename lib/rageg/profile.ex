@@ -17,10 +17,19 @@ defmodule Rageg.Profile do
           path: String.t(),
           dllb_project_tag: String.t(),
           created_at: String.t(),
-          last_ingested_at: String.t() | nil
+          last_ingested_at: String.t() | nil,
+          status: String.t()
         }
 
-  defstruct [:id, :name, :path, :dllb_project_tag, :created_at, :last_ingested_at]
+  defstruct [
+    :id,
+    :name,
+    :path,
+    :dllb_project_tag,
+    :created_at,
+    :last_ingested_at,
+    status: "ready"
+  ]
 
   @doc "Creates a new profile from a directory path and optional name."
   @spec new(String.t(), String.t() | nil) :: t()
@@ -35,7 +44,8 @@ defmodule Rageg.Profile do
       path: abs_path,
       dllb_project_tag: tag,
       created_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-      last_ingested_at: nil
+      last_ingested_at: nil,
+      status: "indexing"
     }
   end
 
@@ -50,20 +60,33 @@ defmodule Rageg.Profile do
         _ -> nil
       end
 
+    status =
+      case map["status"] do
+        val when is_binary(val) -> val
+        _ -> "ready"
+      end
+
     %__MODULE__{
       id: map["id"],
       name: map["name"],
       path: map["path"],
       dllb_project_tag: map["dllb_project_tag"],
       created_at: map["created_at"],
-      last_ingested_at: last_ingested
+      last_ingested_at: last_ingested,
+      status: status
     }
   end
 
-  @doc "Marks the profile as freshly ingested."
+  @doc "Marks the profile as freshly ingested and ready."
   @spec mark_ingested(t()) :: t()
   def mark_ingested(%__MODULE__{} = profile) do
-    %{profile | last_ingested_at: DateTime.utc_now() |> DateTime.to_iso8601()}
+    %{profile | last_ingested_at: DateTime.utc_now() |> DateTime.to_iso8601(), status: "ready"}
+  end
+
+  @doc "Marks the profile as indexing."
+  @spec mark_indexing(t()) :: t()
+  def mark_indexing(%__MODULE__{} = profile) do
+    %{profile | status: "indexing"}
   end
 
   defp generate_id do

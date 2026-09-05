@@ -141,18 +141,13 @@ defmodule Rageg.Metacredo do
   end
 
   defp dllb_available? do
-    Application.get_env(:dllb, :enabled, false) &&
-      match?({:ok, %Dllb.Result.Rows{}}, Dllb.query("SELECT * FROM _dllb_ping_"))
-  rescue
-    _ -> false
-  catch
-    _, _ -> false
+    Rageg.Dllb.connected?()
   end
 
   defp get_cached_result_dllb(path) do
     id = cache_id(path)
 
-    case Dllb.query("SELECT * FROM _metacredo_cache:#{id}") do
+    case Rageg.Dllb.query("SELECT * FROM _metacredo_cache:#{id}") do
       {:ok, %Dllb.Result.Rows{data: [row | _]}} ->
         payload = row["payload"] || row[:payload]
 
@@ -177,7 +172,7 @@ defmodule Rageg.Metacredo do
     json = encode_result(result)
     escaped_json = String.replace(json, "'", "''")
     query = "CREATE _metacredo_cache:#{id} SET payload = '#{escaped_json}' ON CONFLICT UPDATE"
-    Dllb.query(query)
+    Rageg.Dllb.query(query)
     :ok
   rescue
     _ -> :ok

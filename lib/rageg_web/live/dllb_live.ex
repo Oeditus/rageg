@@ -45,7 +45,7 @@ defmodule RagegWeb.DllbLive do
 
   @impl Phoenix.LiveView
   def handle_event("run_query", %{"query" => q}, socket) when q != "" do
-    case Dllb.query(q) do
+    case Rageg.Dllb.query(q) do
       {:ok, result} ->
         {:noreply,
          assign(socket, query_result: inspect(result, pretty: true, limit: 500), query_error: nil)}
