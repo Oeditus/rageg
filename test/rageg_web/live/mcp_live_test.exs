@@ -43,9 +43,24 @@ defmodule RagegWeb.McpLiveTest do
       render_click(view, "select_tool", %{"name" => "list_nodes"})
       render_click(view, "execute_tool", %{})
 
-      html = render(view)
+      # Tool execution is async (spawned Task -> handle_info), so poll until
+      # the result card is rendered or we time out.
+      html = wait_for_result(view)
       assert html =~ "Tool Result"
       assert has_element?(view, "#mcp-result-card")
+    end
+  end
+
+  # Renders the view repeatedly until the async tool result appears, or until
+  # `deadline` is reached (defaults to a generous 5s). Returns the final html.
+  defp wait_for_result(view, deadline \\ System.monotonic_time(:millisecond) + 5_000) do
+    html = render(view)
+
+    if html =~ "Tool Result" or System.monotonic_time(:millisecond) >= deadline do
+      html
+    else
+      Process.sleep(20)
+      wait_for_result(view, deadline)
     end
   end
 end

@@ -357,8 +357,28 @@ defmodule Rageg.Assess do
 
         case System.cmd("git", fallback_args, cd: repo_root, stderr_to_stdout: true) do
           {output, 0} -> {:ok, String.split(output, "\n", trim: true)}
-          {err, _} -> {:error, String.trim(err)}
+          {err, _} -> {:error, clean_git_error(err)}
         end
+    end
+  end
+
+  # Render a friendly, single-line reason instead of leaking git's raw
+  # `fatal: ...` boilerplate (with usage hints) up to the caller.
+  defp clean_git_error(err) do
+    err = String.trim(err)
+
+    cond do
+      String.contains?(err, "ambiguous argument") ->
+        case Regex.run(~r/ambiguous argument '([^']+)'/, err) do
+          [_, ref] -> "Invalid git ref: #{ref}"
+          _ -> "Invalid git ref or path"
+        end
+
+      String.contains?(err, "unknown revision") ->
+        "Unknown git revision"
+
+      true ->
+        err
     end
   end
 
@@ -370,7 +390,7 @@ defmodule Rageg.Assess do
       _ ->
         case System.cmd("git", ["diff", base, head], cd: repo_root, stderr_to_stdout: true) do
           {diff, 0} -> {:ok, diff}
-          {err, _} -> {:error, String.trim(err)}
+          {err, _} -> {:error, clean_git_error(err)}
         end
     end
   end

@@ -38,3 +38,8 @@ npm-debug.log
 # Erlang/Elixir interactive shell history (recreated per IEx session).
 /.erl.history/
 
+# Agent/session tooling runtime state (DSH conversation store).
+/.dsh/
+
+# Ragex runtime data (per-project dllb database, sockets, instance state).
+/.ragex/

@@ -22,14 +22,45 @@ defmodule Rageg.MCP do
 
   @doc """
   Lists all exported Ragex MCP tools.
+
+  Each tool's `inputSchema` is normalised to the canonical MCP JSON-schema
+  shape (string keys, e.g. `"type"`, `"default"`, `"enum"`, `"required"`)
+  so UI consumers can render forms regardless of how the underlying Ragex
+  layer represents the schema (atom-keyed Elixir maps vs. JSON string keys).
   """
   @spec list_tools() :: [tool_schema()]
   def list_tools do
     res = Ragex.MCP.Handlers.Tools.list_tools()
-    Map.get(res, :tools, [])
+
+    res
+    |> Map.get(:tools, [])
+    |> Enum.map(&normalize_tool_schema/1)
   rescue
     _ -> []
   end
+
+  # Keep the tool envelope keys (name/description) as atoms but recursively
+  # stringify the `inputSchema` so property specs (`type`, `default`, `enum`,
+  # `description`, `required`) are always readable via string keys.
+  defp normalize_tool_schema(%{inputSchema: schema} = tool) do
+    %{tool | inputSchema: stringify_keys(schema)}
+  end
+
+  defp normalize_tool_schema(%{"inputSchema" => schema} = tool) do
+    Map.put(tool, "inputSchema", stringify_keys(schema))
+  end
+
+  defp normalize_tool_schema(tool), do: tool
+
+  defp stringify_keys(map) when is_map(map) do
+    Map.new(map, fn
+      {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
+      {k, v} -> {k, stringify_keys(v)}
+    end)
+  end
+
+  defp stringify_keys(list) when is_list(list), do: Enum.map(list, &stringify_keys/1)
+  defp stringify_keys(other), do: other
 
   @doc """
   Finds a specific tool schema by name.

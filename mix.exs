@@ -65,7 +65,14 @@ defmodule Rageg.MixProject do
       {:mdex_gfm, "~> 0.1"},
       {:mdex_mermaid, "~> 0.1"},
       {:mdex_katex, "~> 0.1"},
-      {:mdex, "~> 0.13"}
+      {:mdex, "~> 0.13"},
+      # Optional deps that Ragex marks optional but Rageg relies on for its
+      # full feature set. Ragex (>= 0.29) declares these `optional: true`, so a
+      # consumer (this GUI) must opt in explicitly to keep them compiled and
+      # present at runtime (image tooling via Vix/libvips, Bumblebee embeddings,
+      # Nx/EXLA backend used by Rageg.NxBackend).
+      {:image, "~> 0.54"},
+      {:bumblebee, "~> 0.5"}
       # Always use local path deps in development; hex versions for prod releases.
       # The walk_tree infinite-loop fix in dllb_ex and the Store backend
       # delegation fix in ragex are required for rageg to function correctly.
@@ -81,7 +88,12 @@ defmodule Rageg.MixProject do
           {:ragex, path: "../ragex", override: true},
           {:dllb, path: "../dllb_ex", override: true},
           {:metacredo, path: "../metacredo", override: true},
-          {:metastatic, path: "../metastatic", override: true}
+          {:metastatic, path: "../metastatic", override: true},
+          # Pin exla/nx to 0.13.0 for local dev/test builds: exla >= 0.13.1
+          # does not compile against the CUDA 13.x headers installed on this
+          # machine (compile with EXLA_CPU_ONLY=1 or a matching CUDA toolkit).
+          {:exla, "== 0.13.0", override: true},
+          {:nx, "== 0.13.0", override: true}
         ]
   end
 
