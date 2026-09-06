@@ -7,8 +7,8 @@ defmodule RagegWeb.McpLiveTest do
     test "renders MCP Tools Runner page", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/mcp")
 
-      assert html =~ "MCP Tools Runner"
-      assert html =~ "Interactively execute exported Ragex Model Context Protocol"
+      assert html =~ "MCP Tools"
+      assert html =~ "Interactively execute MCP tools"
     end
 
     test "displays interactive tool selection list and executor form", %{conn: conn} do

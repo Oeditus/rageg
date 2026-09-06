@@ -1,11 +1,13 @@
 defmodule RagegWeb.McpLive do
   @moduledoc """
-  LiveView page for manually executing MCP tools exported by Ragex.
+  LiveView page for manually executing MCP tools exported by Ragex and
+  managing domain plugins.
 
   Features:
-  - Interactive searchable list of all MCP tools
+  - Interactive searchable list of all MCP tools with safety level indicators (destruction_level)
   - Auto-generated parameter form based on JSON Schema properties
   - JSON payload editor mode with live syntax validation
+  - Domain Plugins Manager (topological dependency resolution, enable/disable toggling, running tools)
   - Automatic prefilling of project path parameter
   - Formatted execution output viewer with timing & status
   """
@@ -13,6 +15,7 @@ defmodule RagegWeb.McpLive do
   use RagegWeb, :live_view
 
   alias Rageg.MCP
+  alias Rageg.Plugins
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -29,14 +32,19 @@ defmodule RagegWeb.McpLive do
     json_input = Jason.encode!(initial_args, pretty: true)
 
     socket_path = MCP.socket_path()
+    plugins = Plugins.list_plugins()
+    running_tools = Plugins.list_running_tools()
 
     {:ok,
      socket
-     |> assign(page_title: gettext("MCP Tools Runner"))
+     |> assign(page_title: gettext("MCP Tools & Plugins"))
      |> assign(current_path: "/mcp")
+     |> assign(view_tab: :tools)
      |> assign(project_path: active_path)
      |> assign(socket_path: socket_path)
      |> assign(tools: tools)
+     |> assign(plugins: plugins)
+     |> assign(running_tools: running_tools)
      |> assign(search_query: "")
      |> assign(category: "all")
      |> assign(selected_tool: selected_tool)
@@ -50,6 +58,14 @@ defmodule RagegWeb.McpLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_event("select_view_tab", %{"tab" => tab_str}, socket) do
+    tab = if tab_str == "plugins", do: :plugins, else: :tools
+    plugins = Plugins.list_plugins()
+    running_tools = Plugins.list_running_tools()
+
+    {:noreply, assign(socket, view_tab: tab, plugins: plugins, running_tools: running_tools)}
+  end
+
   def handle_event("search_tools", %{"query" => q}, socket) do
     {:noreply, assign(socket, search_query: q)}
   end
@@ -78,10 +94,30 @@ defmodule RagegWeb.McpLive do
     end
   end
 
+  def handle_event("toggle_plugin", %{"id" => id_str}, socket) do
+    plugin = Enum.find(socket.assigns.plugins, &(to_string(&1.id) == id_str))
+
+    if plugin do
+      if plugin.enabled do
+        Plugins.disable_plugin(plugin.id)
+      else
+        Plugins.enable_plugin(plugin.id)
+      end
+
+      updated_plugins = Plugins.list_plugins()
+      updated_tools = MCP.list_tools()
+
+      {:noreply,
+       socket
+       |> assign(plugins: updated_plugins, tools: updated_tools)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("switch_mode", %{"mode" => mode_str}, socket) do
     mode = if mode_str == "json", do: :json, else: :form
 
-    # Sync arguments between form and json
     if mode == :json do
       json_input = Jason.encode!(socket.assigns.form_args, pretty: true)
       {:noreply, assign(socket, mode: mode, json_input: json_input, json_error: nil)}
@@ -151,7 +187,6 @@ defmodule RagegWeb.McpLive do
   def handle_info({:rageg_profile_changed, profile}, socket) do
     path = (profile && profile.path) || ""
 
-    # Update path pre-fills if active
     form_args =
       if socket.assigns.selected_tool do
         update_path_arg(socket.assigns.form_args, path)
@@ -187,285 +222,424 @@ defmodule RagegWeb.McpLive do
         <div>
           <h1 class="text-2xl font-bold flex items-center gap-2">
             <.icon name="hero-command-line" class="size-7 text-primary" />
-            {gettext("MCP Tools Runner")}
+            {gettext("MCP Tools & Plugins")}
           </h1>
           <p class="text-sm text-base-content/60 mt-1">
-            {gettext("Interactively execute exported Ragex Model Context Protocol (MCP) tools.")}
+            {gettext("Interactively execute MCP tools and manage Ragex domain orchestrator plugins.")}
           </p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="badge badge-neutral badge-outline text-[11px] font-mono" title={gettext("Unix Domain Socket Path")}>
-            <.icon name="hero-cpu-chip" class="size-3.5 mr-1" />
-            {@socket_path}
-          </span>
-          <span class="badge badge-primary badge-outline text-xs font-mono font-semibold">
-            {length(@tools)} {gettext("tools registered")}
-          </span>
+
+        <div class="flex items-center gap-3">
+          <%!-- Main Tab Switcher --%>
+          <div class="join bg-base-200 p-1 rounded-lg">
+            <button
+              class={["join-item btn btn-sm border-none", @view_tab == :tools && "btn-primary shadow-sm"]}
+              phx-click="select_view_tab"
+              phx-value-tab="tools"
+            >
+              <.icon name="hero-wrench-Screwdriver" class="size-4" />
+              {gettext("Tools Runner")}
+            </button>
+            <button
+              class={["join-item btn btn-sm border-none", @view_tab == :plugins && "btn-primary shadow-sm"]}
+              phx-click="select_view_tab"
+              phx-value-tab="plugins"
+            >
+              <.icon name="hero-puzzle-piece" class="size-4" />
+              {gettext("Plugins Manager")}
+              <span :if={length(@plugins) > 0} class="badge badge-xs badge-neutral font-mono">
+                {length(@plugins)}
+              </span>
+            </button>
+          </div>
+
+          <div class="hidden sm:flex flex-wrap items-center gap-2">
+            <span class="badge badge-neutral badge-outline text-[11px] font-mono" title={gettext("Unix Domain Socket Path")}>
+              <.icon name="hero-cpu-chip" class="size-3.5 mr-1" />
+              {@socket_path}
+            </span>
+          </div>
         </div>
       </div>
 
-      <%!-- Main Grid Layout --%>
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <%!-- Left Sidebar: Tool Selector --%>
-        <div class="lg:col-span-4 space-y-3">
-          <div class="card bg-base-200 border border-base-300 shadow-sm">
-            <div class="card-body p-3 space-y-3">
-              <div class="form-control w-full">
-                <input
-                  type="text"
-                  id="mcp-search-input"
-                  value={@search_query}
-                  placeholder={gettext("Search tools by name or description...")}
-                  class="input input-sm input-bordered font-mono"
-                  phx-keyup="search_tools"
-                  phx-value-query=""
-                />
-              </div>
+      <%= if @view_tab == :tools do %>
+        <%!-- Main Grid Layout --%>
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <%!-- Left Sidebar: Tool Selector --%>
+          <div class="lg:col-span-4 space-y-3">
+            <div class="card bg-base-200 border border-base-300 shadow-sm">
+              <div class="card-body p-3 space-y-3">
+                <div class="form-control w-full">
+                  <input
+                    type="text"
+                    id="mcp-search-input"
+                    value={@search_query}
+                    placeholder={gettext("Search tools by name or description...")}
+                    class="input input-sm input-bordered font-mono"
+                    phx-keyup="search_tools"
+                    phx-value-query=""
+                  />
+                </div>
 
-              <%!-- Category Filter Pills --%>
-              <div class="flex flex-wrap gap-1 border-b border-base-300 pb-2">
-                <button
-                  :for={cat <- [
-                    {"all", gettext("All")},
-                    {"rag", gettext("RAG")},
-                    {"refactor", gettext("Refactor")},
-                    {"quality", gettext("Quality")},
-                    {"git", gettext("Git")},
-                    {"image", gettext("Image")},
-                    {"scip", gettext("SCIP")}
-                  ]}
-                  class={[
-                    "btn btn-xs rounded-full font-mono text-[10px]",
-                    if(@category == elem(cat, 0), do: "btn-primary", else: "btn-ghost")
-                  ]}
-                  phx-click="select_category"
-                  phx-value-category={elem(cat, 0)}
-                >
-                  {elem(cat, 1)}
-                </button>
-              </div>
+                <%!-- Category Filter Pills --%>
+                <div class="flex flex-wrap gap-1 border-b border-base-300 pb-2">
+                  <button
+                    :for={cat <- [
+                      {"all", gettext("All")},
+                      {"rag", gettext("RAG")},
+                      {"plugins", gettext("Plugins")},
+                      {"url", gettext("URL")},
+                      {"refactor", gettext("Refactor")},
+                      {"quality", gettext("Quality")},
+                      {"git", gettext("Git")},
+                      {"image", gettext("Image")}
+                    ]}
+                    class={[
+                      "btn btn-xs rounded-full font-mono text-[10px]",
+                      if(@category == elem(cat, 0), do: "btn-primary", else: "btn-ghost")
+                    ]}
+                    phx-click="select_category"
+                    phx-value-category={elem(cat, 0)}
+                  >
+                    {elem(cat, 1)}
+                  </button>
+                </div>
 
-              <% filtered = MCP.filter_tools(@tools, @search_query, @category) %>
-              <div class="divide-y divide-base-300 max-h-[600px] overflow-y-auto pr-1" id="mcp-tools-list">
-                <button
-                  :for={tool <- filtered}
-                  id={"mcp-tool-item-#{tool.name}"}
-                  class={[
-                    "w-full text-left p-2.5 rounded-lg transition-colors flex flex-col gap-1 my-0.5",
-                    if(@selected_tool && @selected_tool.name == tool.name,
-                      do: "bg-primary text-primary-content font-medium shadow-xs",
-                      else: "hover:bg-base-300/60"
-                    )
-                  ]}
-                  phx-click="select_tool"
-                  phx-value-name={tool.name}
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="font-mono text-xs font-bold truncate">{tool.name}</span>
-                    <span class={[
-                      "badge badge-xs font-mono shrink-0",
-                      if(@selected_tool && @selected_tool.name == tool.name, do: "badge-neutral", else: "badge-ghost")
+                <% filtered = MCP.filter_tools(@tools, @search_query, @category) %>
+                <div class="divide-y divide-base-300 max-h-[600px] overflow-y-auto pr-1" id="mcp-tools-list">
+                  <button
+                    :for={tool <- filtered}
+                    id={"mcp-tool-item-#{tool.name}"}
+                    class={[
+                      "w-full text-left p-2.5 rounded-lg transition-colors flex flex-col gap-1 my-0.5",
+                      if(@selected_tool && @selected_tool.name == tool.name,
+                        do: "bg-primary text-primary-content font-medium shadow-xs",
+                        else: "hover:bg-base-300/60"
+                      )
+                    ]}
+                    phx-click="select_tool"
+                    phx-value-name={tool.name}
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="font-mono text-xs font-bold truncate">{tool.name}</span>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <% {badge_class, badge_label} = destruction_level_badge(tool) %>
+                        <span class={["badge badge-xs font-mono uppercase text-[9px]", badge_class]}>
+                          {badge_label}
+                        </span>
+                        <span class={[
+                          "badge badge-xs font-mono",
+                          if(@selected_tool && @selected_tool.name == tool.name, do: "badge-neutral", else: "badge-ghost")
+                        ]}>
+                          {param_count(tool)} {gettext("args")}
+                        </span>
+                      </div>
+                    </div>
+                    <p class={[
+                      "text-[11px] line-clamp-2 leading-tight",
+                      if(@selected_tool && @selected_tool.name == tool.name, do: "opacity-90", else: "text-base-content/60")
                     ]}>
-                      {param_count(tool)} {gettext("args")}
-                    </span>
-                  </div>
-                  <p class={[
-                    "text-[11px] line-clamp-2 leading-tight",
-                    if(@selected_tool && @selected_tool.name == tool.name, do: "opacity-90", else: "text-base-content/60")
-                  ]}>
-                    {tool.description}
-                  </p>
-                </button>
+                      {tool.description}
+                    </p>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <%!-- Right Main Panel: Executor & Results --%>
-        <div class="lg:col-span-8 space-y-6">
-          <div :if={@selected_tool} class="card bg-base-200 border border-base-300 shadow-sm" id="mcp-executor-card">
-            <div class="card-body p-5 space-y-4">
-              <%!-- Selected Tool Header --%>
-              <div class="flex items-start justify-between gap-4 pb-3 border-b border-base-300">
-                <div>
-                  <div class="flex items-center gap-2">
-                    <h2 class="text-xl font-bold font-mono text-primary">{@selected_tool.name}</h2>
-                    <span class="badge badge-sm badge-secondary font-mono">MCP Tool</span>
-                  </div>
-                  <p class="text-xs text-base-content/70 mt-1">
-                    {@selected_tool.description}
-                  </p>
-                </div>
-
-                <%!-- Mode switcher --%>
-                <div class="join border border-base-300 rounded-lg shrink-0">
-                  <button
-                    class={["join-item btn btn-xs", if(@mode == :form, do: "btn-primary", else: "btn-ghost")]}
-                    phx-click="switch_mode"
-                    phx-value-mode="form"
-                  >
-                    {gettext("Form")}
-                  </button>
-                  <button
-                    class={["join-item btn btn-xs", if(@mode == :json, do: "btn-primary", else: "btn-ghost")]}
-                    phx-click="switch_mode"
-                    phx-value-mode="json"
-                  >
-                    {gettext("JSON")}
-                  </button>
-                </div>
-              </div>
-
-              <%!-- Parameter Form / JSON Editor --%>
-              <div class="space-y-4">
-                <%= if @mode == :form do %>
-                  <% props = get_schema_properties(@selected_tool) %>
-                  <div :if={props == %{}} class="text-xs text-base-content/50 italic py-2">
-                    {gettext("This tool takes no parameters.")}
-                  </div>
-
-                  <div :if={props != %{}} class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div :for={{prop_name, prop_spec} <- props} class="form-control w-full">
-                      <label class="label py-1">
-                        <span class="label-text text-xs font-mono font-semibold">
-                          {prop_name}
-                          <span :if={is_required?(@selected_tool, prop_name)} class="text-error ml-0.5">*</span>
-                        </span>
-                        <span class="label-text-alt text-[10px] text-base-content/50 font-mono">
-                          {Map.get(prop_spec, "type", "string")}
-                        </span>
-                      </label>
-
-                      <%= cond do %>
-                        <% Map.has_key?(prop_spec, "enum") -> %>
-                          <select
-                            id={"form-input-#{prop_name}"}
-                            class="select select-sm select-bordered w-full font-mono text-xs"
-                            phx-change="update_form_arg"
-                            phx-value-field={prop_name}
-                            phx-value-value=""
-                          >
-                            <option
-                              :for={opt <- Map.get(prop_spec, "enum", [])}
-                              value={to_string(opt)}
-                              selected={to_string(Map.get(@form_args, prop_name)) == to_string(opt)}
-                            >
-                              {opt}
-                            </option>
-                          </select>
-
-                        <% Map.get(prop_spec, "type") == "boolean" -> %>
-                          <label class="cursor-pointer label justify-start gap-3 bg-base-100 px-3 py-1.5 rounded-lg border border-base-300">
-                            <input
-                              type="checkbox"
-                              id={"form-input-#{prop_name}"}
-                              class="checkbox checkbox-sm checkbox-primary"
-                              checked={Map.get(@form_args, prop_name) == true}
-                              phx-click="update_form_arg"
-                              phx-value-field={prop_name}
-                              phx-value-value={to_string(!Map.get(@form_args, prop_name, false))}
-                            />
-                            <span class="label-text text-xs font-mono">{prop_name}</span>
-                          </label>
-
-                        <% true -> %>
-                          <input
-                            type="text"
-                            id={"form-input-#{prop_name}"}
-                            value={to_string(Map.get(@form_args, prop_name, ""))}
-                            placeholder={Map.get(prop_spec, "description", "")}
-                            class="input input-sm input-bordered font-mono text-xs w-full"
-                            phx-keyup="update_form_arg"
-                            phx-value-field={prop_name}
-                            phx-value-value=""
-                          />
-                      <% end %>
-                      <span :if={Map.has_key?(prop_spec, "description")} class="text-[10px] text-base-content/50 mt-0.5">
-                        {Map.get(prop_spec, "description")}
+          <%!-- Right Main Panel: Executor & Results --%>
+          <div class="lg:col-span-8 space-y-6">
+            <div :if={@selected_tool} class="card bg-base-200 border border-base-300 shadow-sm" id="mcp-executor-card">
+              <div class="card-body p-5 space-y-4">
+                <%!-- Selected Tool Header --%>
+                <div class="flex items-start justify-between gap-4 pb-3 border-b border-base-300">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <h2 class="text-xl font-bold font-mono text-primary">{@selected_tool.name}</h2>
+                      <span class="badge badge-sm badge-secondary font-mono">MCP Tool</span>
+                      <% {b_class, b_label} = destruction_level_badge(@selected_tool) %>
+                      <span class={["badge badge-sm font-mono uppercase text-[10px]", b_class]}>
+                        Safety: {b_label}
                       </span>
                     </div>
+                    <p class="text-xs text-base-content/70 mt-1">
+                      {@selected_tool.description}
+                    </p>
                   </div>
-                <% else %>
-                  <div class="form-control w-full">
-                    <label class="label py-1">
-                      <span class="label-text text-xs font-mono font-semibold">{gettext("JSON Arguments Payload")}</span>
-                    </label>
-                    <textarea
-                      id="mcp-json-textarea"
-                      rows="7"
-                      class="textarea textarea-bordered font-mono text-xs w-full"
-                      phx-keyup="update_json"
-                      phx-value-json=""
-                    >{@json_input}</textarea>
-                    <div :if={@json_error} class="text-xs text-error mt-1 flex items-center gap-1 font-mono">
-                      <.icon name="hero-exclamation-circle" class="size-4 shrink-0" />
-                      <span>{@json_error}</span>
-                    </div>
-                  </div>
-                <% end %>
-              </div>
 
-              <%!-- Action Toolbar --%>
-              <div class="flex items-center justify-between pt-2">
-                <div class="text-xs text-base-content/50 font-mono">
-                  {gettext("Target Profile")}: <span class="font-bold">{if @project_path == "", do: gettext("None"), else: Path.basename(@project_path)}</span>
+                  <%!-- Mode switcher --%>
+                  <div class="join border border-base-300 rounded-lg shrink-0">
+                    <button
+                      class={["join-item btn btn-xs", if(@mode == :form, do: "btn-primary", else: "btn-ghost")]}
+                      phx-click="switch_mode"
+                      phx-value-mode="form"
+                    >
+                      {gettext("Form")}
+                    </button>
+                    <button
+                      class={["join-item btn btn-xs", if(@mode == :json, do: "btn-primary", else: "btn-ghost")]}
+                      phx-click="switch_mode"
+                      phx-value-mode="json"
+                    >
+                      {gettext("JSON")}
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  id="mcp-execute-btn"
-                  class="btn btn-primary gap-2"
-                  phx-click="execute_tool"
-                  disabled={@running or (@mode == :json and @json_error != nil)}
-                >
-                  <span :if={@running} class="loading loading-spinner loading-sm"></span>
-                  <.icon :if={!@running} name="hero-play" class="size-5" />
-                  {if @running, do: gettext("Executing..."), else: gettext("Execute Tool")}
-                </button>
+                <%!-- Parameter Form / JSON Editor --%>
+                <div class="space-y-4">
+                  <%= if @mode == :form do %>
+                    <% props = get_schema_properties(@selected_tool) %>
+                    <div :if={props == %{}} class="text-xs text-base-content/50 italic py-2">
+                      {gettext("This tool takes no parameters.")}
+                    </div>
+
+                    <div :if={props != %{}} class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div :for={{prop_name, prop_spec} <- props} class="form-control w-full">
+                        <label class="label py-1">
+                          <span class="label-text text-xs font-mono font-semibold">
+                            {prop_name}
+                            <span :if={is_required?(@selected_tool, prop_name)} class="text-error ml-0.5">*</span>
+                          </span>
+                          <span class="label-text-alt text-[10px] text-base-content/50 font-mono">
+                            {Map.get(prop_spec, "type", "string")}
+                          </span>
+                        </label>
+
+                        <%= cond do %>
+                          <% Map.has_key?(prop_spec, "enum") -> %>
+                            <select
+                              id={"form-input-#{prop_name}"}
+                              class="select select-sm select-bordered w-full font-mono text-xs"
+                              phx-change="update_form_arg"
+                              phx-value-field={prop_name}
+                              phx-value-value=""
+                            >
+                              <option
+                                :for={opt <- Map.get(prop_spec, "enum", [])}
+                                value={to_string(opt)}
+                                selected={to_string(Map.get(@form_args, prop_name)) == to_string(opt)}
+                              >
+                                {opt}
+                              </option>
+                            </select>
+
+                          <% Map.get(prop_spec, "type") == "boolean" -> %>
+                            <label class="cursor-pointer label justify-start gap-3 bg-base-100 px-3 py-1.5 rounded-lg border border-base-300">
+                              <input
+                                type="checkbox"
+                                id={"form-input-#{prop_name}"}
+                                class="checkbox checkbox-sm checkbox-primary"
+                                checked={Map.get(@form_args, prop_name) == true}
+                                phx-click="update_form_arg"
+                                phx-value-field={prop_name}
+                                phx-value-value={to_string(!Map.get(@form_args, prop_name, false))}
+                              />
+                              <span class="label-text text-xs font-mono">{prop_name}</span>
+                            </label>
+
+                          <% true -> %>
+                            <input
+                              type="text"
+                              id={"form-input-#{prop_name}"}
+                              value={to_string(Map.get(@form_args, prop_name, ""))}
+                              placeholder={Map.get(prop_spec, "description", "")}
+                              class="input input-sm input-bordered font-mono text-xs w-full"
+                              phx-keyup="update_form_arg"
+                              phx-value-field={prop_name}
+                              phx-value-value=""
+                            />
+                        <% end %>
+                        <span :if={Map.has_key?(prop_spec, "description")} class="text-[10px] text-base-content/50 mt-0.5">
+                          {Map.get(prop_spec, "description")}
+                        </span>
+                      </div>
+                    </div>
+                  <% else %>
+                    <div class="form-control w-full">
+                      <label class="label py-1">
+                        <span class="label-text text-xs font-mono font-semibold">{gettext("JSON Arguments Payload")}</span>
+                      </label>
+                      <textarea
+                        id="mcp-json-textarea"
+                        rows="7"
+                        class="textarea textarea-bordered font-mono text-xs w-full"
+                        phx-keyup="update_json"
+                        phx-value-json=""
+                      >{@json_input}</textarea>
+                      <div :if={@json_error} class="text-xs text-error mt-1 flex items-center gap-1 font-mono">
+                        <.icon name="hero-exclamation-circle" class="size-4 shrink-0" />
+                        <span>{@json_error}</span>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+
+                <%!-- Action Toolbar --%>
+                <div class="flex items-center justify-between pt-2">
+                  <div class="text-xs text-base-content/50 font-mono">
+                    {gettext("Target Profile")}: <span class="font-bold">{if @project_path == "", do: gettext("None"), else: Path.basename(@project_path)}</span>
+                  </div>
+
+                  <button
+                    id="mcp-execute-btn"
+                    class="btn btn-primary gap-2"
+                    phx-click="execute_tool"
+                    disabled={@running or (@mode == :json and @json_error != nil)}
+                  >
+                    <span :if={@running} class="loading loading-spinner loading-sm"></span>
+                    <.icon :if={!@running} name="hero-play" class="size-5" />
+                    {if @running, do: gettext("Executing..."), else: gettext("Execute Tool")}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <%!-- Global Error Alert --%>
-          <div :if={@error} class="alert alert-error shadow-sm" id="mcp-error">
-            <.icon name="hero-exclamation-triangle" class="size-5" />
-            <span>{@error}</span>
-          </div>
+            <%!-- Global Error Alert --%>
+            <div :if={@error} class="alert alert-error shadow-sm" id="mcp-error">
+              <.icon name="hero-exclamation-triangle" class="size-5" />
+              <span>{@error}</span>
+            </div>
 
-          <%!-- Result Box --%>
-          <div :if={@result} class="card bg-base-200 border border-base-300 shadow-sm" id="mcp-result-card">
-            <div class="card-body p-4 space-y-3">
-              <div class="flex items-center justify-between pb-2 border-b border-base-300">
-                <div class="flex items-center gap-2">
-                  <.icon name="hero-code-bracket" class="size-5 text-primary" />
-                  <h3 class="font-bold text-sm">{gettext("Tool Result")}</h3>
-                  <span class={[
-                    "badge badge-sm font-mono font-semibold",
-                    if(@result.is_error, do: "badge-error", else: "badge-success")
-                  ]}>
-                    {if @result.is_error, do: gettext("Error"), else: gettext("Success")}
-                  </span>
+            <%!-- Result Box --%>
+            <div :if={@result} class="card bg-base-200 border border-base-300 shadow-sm" id="mcp-result-card">
+              <div class="card-body p-4 space-y-3">
+                <div class="flex items-center justify-between pb-2 border-b border-base-300">
+                  <div class="flex items-center gap-2">
+                    <.icon name="hero-code-bracket" class="size-5 text-primary" />
+                    <h3 class="font-bold text-sm">{gettext("Tool Result")}</h3>
+                    <span class={[
+                      "badge badge-sm font-mono font-semibold",
+                      if(@result.is_error, do: "badge-error", else: "badge-success")
+                    ]}>
+                      {if @result.is_error, do: gettext("Error"), else: gettext("Success")}
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <span class="badge badge-ghost badge-sm font-mono">
+                      {@result.timing_ms} ms
+                    </span>
+                  </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                  <span class="badge badge-ghost badge-sm font-mono">
-                    {@result.timing_ms} ms
-                  </span>
+                <%!-- Code Output Display --%>
+                <div class="bg-base-300 rounded-xl p-3 border border-base-300 font-mono text-xs overflow-x-auto max-h-[500px]">
+                  <pre class="whitespace-pre-wrap break-all text-base-content/90 font-mono" phx-no-curly-interpolation><%= format_output(@result.output) %></pre>
                 </div>
-              </div>
-
-              <%!-- Code Output Display --%>
-              <div class="bg-base-300 rounded-xl p-3 border border-base-300 font-mono text-xs overflow-x-auto max-h-[500px]">
-                <pre class="whitespace-pre-wrap break-all text-base-content/90 font-mono">{format_output(@result.output)}</pre>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      <% else %>
+        <%!-- Plugins Manager View --%>
+        <div class="space-y-6">
+          <div class="card bg-base-200 border border-base-300 shadow-sm">
+            <div class="card-body p-5 space-y-4">
+              <div class="flex items-center justify-between border-b border-base-300 pb-3">
+                <div>
+                  <h2 class="text-lg font-bold flex items-center gap-2">
+                    <.icon name="hero-puzzle-piece" class="size-5 text-primary" />
+                    {gettext("Registered Orchestrator Plugins")}
+                  </h2>
+                  <p class="text-xs text-base-content/60 mt-0.5">
+                    {gettext("Ragex modular domain plugins ordered topologically by dependency resolution and priority.")}
+                  </p>
+                </div>
+                <span class="badge badge-primary font-mono text-xs">
+                  {length(@plugins)} {gettext("Plugins Active")}
+                </span>
+              </div>
+
+              <div class="grid grid-cols-1 gap-4">
+                <div
+                  :for={plugin <- @plugins}
+                  class="bg-base-100 rounded-xl p-4 border border-base-300 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                >
+                  <div class="space-y-1.5 flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="font-bold text-sm">{plugin.name}</span>
+                      <span class="badge badge-ghost badge-sm font-mono text-[10px]">v{plugin.version}</span>
+                      <span class="badge badge-outline badge-sm font-mono text-[10px]">:{plugin.category}</span>
+                      <span class="badge badge-secondary badge-outline badge-sm font-mono text-[10px]">
+                        Priority: {plugin.priority}
+                      </span>
+                    </div>
+
+                    <p class="text-xs text-base-content/70">{plugin.description}</p>
+
+                    <div class="flex flex-wrap items-center gap-2 pt-1 font-mono text-[11px]">
+                      <span class="text-base-content/50">{gettext("ID")}:</span>
+                      <span class="font-bold text-primary">:{plugin.id}</span>
+
+                      <span class="text-base-content/50 ml-2">{gettext("Tools")}:</span>
+                      <span class="badge badge-sm badge-ghost font-bold">{plugin.tools_count}</span>
+
+                      <div :if={plugin.dependencies != []} class="flex items-center gap-1 ml-2">
+                        <span class="text-base-content/50">{gettext("Depends on")}:</span>
+                        <span :for={dep <- plugin.dependencies} class="badge badge-xs badge-neutral">
+                          :{dep}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-3 shrink-0">
+                    <button
+                      class={["btn btn-sm gap-2", if(plugin.enabled, do: "btn-success btn-outline", else: "btn-ghost text-base-content/50")]}
+                      phx-click="toggle_plugin"
+                      phx-value-id={to_string(plugin.id)}
+                    >
+                      <.icon :if={plugin.enabled} name="hero-check-circle" class="size-4" />
+                      <.icon :if={!plugin.enabled} name="hero-minus-circle" class="size-4" />
+                      {if plugin.enabled, do: gettext("Enabled"), else: gettext("Disabled")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <%!-- Running Tasks Supervisor Card --%>
+          <div class="card bg-base-200 border border-base-300 shadow-sm">
+            <div class="card-body p-4 space-y-2">
+              <h3 class="text-sm font-bold flex items-center gap-2">
+                <.icon name="hero-cpu-chip" class="size-4 text-primary" />
+                {gettext("Parallel Safety Task Supervisor")}
+              </h3>
+              <p class="text-xs text-base-content/60">
+                {gettext("Non-destructive tools (:destruction_level == :none) run concurrently across parallel supervisors.")}
+              </p>
+              <div class="bg-base-100 p-3 rounded-lg border border-base-300 font-mono text-xs">
+                {if map_size(@running_tools) == 0,
+                  do: gettext("No tools currently executing in parallel background tasks."),
+                  else: Jason.encode!(@running_tools, pretty: true)}
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
     </div>
     """
   end
 
   # Helpers
+
+  defp destruction_level_badge(tool) when is_map(tool) do
+    level = Map.get(tool, :destruction_level) || Map.get(tool, "destruction_level") || :none
+    level_str = to_string(level)
+
+    case level_str do
+      "none" -> {"badge-success", "read-only"}
+      "low" -> {"badge-info", "low risk"}
+      "medium" -> {"badge-warning", "medium risk"}
+      "high" -> {"badge-error", "high risk"}
+      "full" -> {"badge-error font-bold", "destructive"}
+      _ -> {"badge-ghost", level_str}
+    end
+  end
+
+  defp destruction_level_badge(_), do: {"badge-ghost", "none"}
 
   defp default_arguments(nil, _path), do: %{}
 

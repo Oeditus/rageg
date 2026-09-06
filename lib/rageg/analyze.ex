@@ -188,4 +188,31 @@ defmodule Rageg.Analyze do
   def default_analyses do
     Map.new(analysis_types(), fn {key, _label, default} -> {key, default} end)
   end
+
+  @doc """
+  Runs URL & Remote Repository Analysis via `Ragex.URLAnalyzer`.
+
+  Accepts target URL (Git repo, web page, API spec, or raw code file) and options:
+  - `:depth` - `:shallow` (default) or `:deep`
+  - `:index_graph` - boolean (default true)
+  - `:auth_token` - optional string for private repositories
+  """
+  @spec analyze_url(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def analyze_url(url, opts \\ []) when is_binary(url) do
+    if Code.ensure_loaded?(Ragex.URLAnalyzer) do
+      normalized_opts =
+        Keyword.update(opts, :depth, 1, fn
+          "shallow" -> 1
+          "deep" -> 5
+          val when is_integer(val) -> val
+          _ -> 1
+        end)
+
+      Ragex.URLAnalyzer.analyze(url, normalized_opts)
+    else
+      {:error, "Ragex.URLAnalyzer is not available"}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
 end

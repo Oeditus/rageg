@@ -9,7 +9,8 @@ defmodule Rageg.MCP do
   @type tool_schema :: %{
           name: String.t(),
           description: String.t(),
-          inputSchema: map()
+          inputSchema: map(),
+          destruction_level: atom() | String.t()
         }
 
   @type execution_result :: %{
@@ -27,6 +28,7 @@ defmodule Rageg.MCP do
   shape (string keys, e.g. `"type"`, `"default"`, `"enum"`, `"required"`)
   so UI consumers can render forms regardless of how the underlying Ragex
   layer represents the schema (atom-keyed Elixir maps vs. JSON string keys).
+  Deduplicates tools by name to ensure clean DOM element identity.
   """
   @spec list_tools() :: [tool_schema()]
   def list_tools do
@@ -35,19 +37,24 @@ defmodule Rageg.MCP do
     res
     |> Map.get(:tools, [])
     |> Enum.map(&normalize_tool_schema/1)
+    |> Enum.uniq_by(fn t -> t[:name] || t["name"] end)
   rescue
     _ -> []
   end
 
-  # Keep the tool envelope keys (name/description) as atoms but recursively
+  # Keep the tool envelope keys (name/description/destruction_level) as atoms but recursively
   # stringify the `inputSchema` so property specs (`type`, `default`, `enum`,
   # `description`, `required`) are always readable via string keys.
   defp normalize_tool_schema(%{inputSchema: schema} = tool) do
-    %{tool | inputSchema: stringify_keys(schema)}
+    tool
+    |> Map.put_new(:destruction_level, :none)
+    |> Map.put(:inputSchema, stringify_keys(schema))
   end
 
   defp normalize_tool_schema(%{"inputSchema" => schema} = tool) do
-    Map.put(tool, "inputSchema", stringify_keys(schema))
+    tool
+    |> Map.put_new("destruction_level", "none")
+    |> Map.put("inputSchema", stringify_keys(schema))
   end
 
   defp normalize_tool_schema(tool), do: tool
@@ -247,6 +254,22 @@ defmodule Rageg.MCP do
       String.contains?(name, "smell") or String.contains?(name, "dead_code") or
       String.contains?(name, "duplicate") or String.contains?(name, "complexity") or
       String.contains?(name, "business_logic")
+  end
+
+  defp matches_category?(tool, "url") do
+    String.contains?(tool.name, "url") or String.contains?(tool.name, "web")
+  end
+
+  defp matches_category?(tool, "plugins") do
+    Map.has_key?(tool, :plugin_id) or Map.has_key?(tool, "plugin_id") or
+      tool.name in [
+        "analyze_url",
+        "git_blame",
+        "git_history",
+        "git_pr_info",
+        "co_change_analysis",
+        "git_enrich"
+      ]
   end
 
   defp matches_category?(_tool, _category), do: true

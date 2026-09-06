@@ -79,7 +79,7 @@ defmodule Rageg.MixProject do
     ] ++
       if Mix.env() == :prod and is_nil(System.get_env("LOCAL_OEDITUS")),
         do: [
-          {:ragex, "~> 0.23"},
+          {:ragex, "~> 0.30"},
           {:dllb, "~> 0.8"},
           {:metacredo, "~> 0.4"},
           {:metastatic, "~> 0.26"}
