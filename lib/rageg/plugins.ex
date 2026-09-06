@@ -91,10 +91,8 @@ defmodule Rageg.Plugins do
   defp normalize_id(id) when is_atom(id), do: id
 
   defp normalize_id(id) when is_binary(id) do
-    try do
-      String.to_existing_atom(id)
-    rescue
-      _ -> String.to_atom(id)
-    end
+    String.to_existing_atom(id)
+  rescue
+    _ -> String.to_atom(id)
   end
 end

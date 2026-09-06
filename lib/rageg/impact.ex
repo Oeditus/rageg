@@ -134,24 +134,22 @@ defmodule Rageg.Impact do
   # -- Private --
 
   defp parse_node_ref(target) when is_binary(target) do
-    cond do
-      String.contains?(target, "/") ->
-        # "Module.func/2" -> {:function, Module, :func, 2}
-        [path, arity_str] = String.split(target, "/", parts: 2)
-        arity = String.to_integer(arity_str)
+    if String.contains?(target, "/") do
+      # "Module.func/2" -> {:function, Module, :func, 2}
+      [path, arity_str] = String.split(target, "/", parts: 2)
+      arity = String.to_integer(arity_str)
 
-        case String.split(path, ".") |> Enum.split(-1) do
-          {mod_parts, [func]} ->
-            module = mod_parts |> Enum.join(".") |> safe_atom()
-            {:function, module, safe_atom(func), arity}
+      case String.split(path, ".") |> Enum.split(-1) do
+        {mod_parts, [func]} ->
+          module = mod_parts |> Enum.join(".") |> safe_atom()
+          {:function, module, safe_atom(func), arity}
 
-          _ ->
-            {:function, safe_atom(path), :unknown, arity}
-        end
-
-      true ->
-        # Plain module name
-        {:module, safe_atom(target)}
+        _ ->
+          {:function, safe_atom(path), :unknown, arity}
+      end
+    else
+      # Plain module name
+      {:module, safe_atom(target)}
     end
   end
 

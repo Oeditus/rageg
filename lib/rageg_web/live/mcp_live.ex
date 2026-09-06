@@ -75,22 +75,24 @@ defmodule RagegWeb.McpLive do
   end
 
   def handle_event("select_tool", %{"name" => name}, socket) do
-    if tool = Enum.find(socket.assigns.tools, &(&1.name == name)) do
-      initial_args = default_arguments(tool, socket.assigns.project_path)
-      json_input = Jason.encode!(initial_args, pretty: true)
+    case Enum.find(socket.assigns.tools, &(&1.name == name)) do
+      nil ->
+        {:noreply, socket}
 
-      {:noreply,
-       socket
-       |> assign(
-         selected_tool: tool,
-         form_args: initial_args,
-         json_input: json_input,
-         json_error: nil,
-         result: nil,
-         error: nil
-       )}
-    else
-      {:noreply, socket}
+      tool ->
+        initial_args = default_arguments(tool, socket.assigns.project_path)
+        json_input = Jason.encode!(initial_args, pretty: true)
+
+        {:noreply,
+         socket
+         |> assign(
+           selected_tool: tool,
+           form_args: initial_args,
+           json_input: json_input,
+           json_error: nil,
+           result: nil,
+           error: nil
+         )}
     end
   end
 
@@ -399,7 +401,7 @@ defmodule RagegWeb.McpLive do
                         <label class="label py-1">
                           <span class="label-text text-xs font-mono font-semibold">
                             {prop_name}
-                            <span :if={is_required?(@selected_tool, prop_name)} class="text-error ml-0.5">*</span>
+                            <span :if={required_param?(@selected_tool, prop_name)} class="text-error ml-0.5">*</span>
                           </span>
                           <span class="label-text-alt text-[10px] text-base-content/50 font-mono">
                             {Map.get(prop_spec, "type", "string")}
@@ -684,15 +686,15 @@ defmodule RagegWeb.McpLive do
     map_size(props)
   end
 
-  defp is_required?(%{inputSchema: %{required: reqs}}, prop_name) when is_list(reqs) do
+  defp required_param?(%{inputSchema: %{required: reqs}}, prop_name) when is_list(reqs) do
     prop_name in reqs
   end
 
-  defp is_required?(%{"inputSchema" => %{"required" => reqs}}, prop_name) when is_list(reqs) do
+  defp required_param?(%{"inputSchema" => %{"required" => reqs}}, prop_name) when is_list(reqs) do
     prop_name in reqs
   end
 
-  defp is_required?(_, _), do: false
+  defp required_param?(_, _), do: false
 
   defp parse_value("true"), do: true
   defp parse_value("false"), do: false

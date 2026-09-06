@@ -72,7 +72,8 @@ defmodule Rageg.MixProject do
       # present at runtime (image tooling via Vix/libvips, Bumblebee embeddings,
       # Nx/EXLA backend used by Rageg.NxBackend).
       {:image, "~> 0.54"},
-      {:bumblebee, "~> 0.5"}
+      {:bumblebee, "~> 0.5"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
       # Always use local path deps in development; hex versions for prod releases.
       # The walk_tree infinite-loop fix in dllb_ex and the Store backend
       # delegation fix in ragex are required for rageg to function correctly.
@@ -113,7 +114,16 @@ defmodule Rageg.MixProject do
         "esbuild rageg --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      quality: ["format", "credo", "metacredo"],
+      "quality.ci": ["format --check-formatted", "credo", "metacredo"],
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "credo",
+        "metacredo",
+        "test"
+      ]
     ]
   end
 end

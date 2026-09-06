@@ -21,10 +21,14 @@ defmodule Rageg.MetacredoTest do
       assert is_map(result.summary)
       assert is_integer(result.timing_ms)
 
-      if issue = Enum.find(result.issues, &(&1.snippet != nil)) do
-        assert is_map(issue.snippet)
-        assert is_list(issue.snippet.lines)
-        assert Enum.any?(issue.snippet.lines, & &1.is_target)
+      case Enum.find(result.issues, &(&1.snippet != nil)) do
+        nil ->
+          :ok
+
+        issue ->
+          assert is_map(issue.snippet)
+          assert is_list(issue.snippet.lines)
+          assert Enum.any?(issue.snippet.lines, & &1.is_target)
       end
 
       for issue <- result.issues do

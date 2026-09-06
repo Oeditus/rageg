@@ -454,7 +454,7 @@ defmodule Rageg.Assess do
     - Base branch/ref: #{base}
     - Head branch/ref: #{head}
     - Changed files:
-    #{Enum.map(changed_files, &"- `#{&1}`") |> Enum.join("\n")}
+    #{Enum.map_join(changed_files, "\n", &"- `#{&1}`")}
 
     ## Static Analysis Findings in Changed Files
     #{issues_summary}

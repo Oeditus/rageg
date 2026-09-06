@@ -9,7 +9,7 @@ defmodule Rageg.AssessTest do
     test "lists branches for valid repository path" do
       assert {:ok, branches} = Assess.list_branches(@repo_path)
       assert is_list(branches)
-      assert length(branches) > 0
+      assert branches != []
 
       for branch <- branches do
         assert is_binary(branch.name)

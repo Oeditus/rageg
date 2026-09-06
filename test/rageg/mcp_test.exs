@@ -7,7 +7,7 @@ defmodule Rageg.MCPTest do
     test "returns a non-empty list of exported MCP tools" do
       tools = MCP.list_tools()
       assert is_list(tools)
-      assert length(tools) > 0
+      assert tools != []
 
       first = List.first(tools)
       assert is_binary(first.name)
@@ -48,7 +48,7 @@ defmodule Rageg.MCPTest do
     test "returns exported MCP resources" do
       resources = MCP.list_resources()
       assert is_list(resources)
-      assert length(resources) > 0
+      assert resources != []
       first = List.first(resources)
       assert Map.has_key?(first, :uri) or Map.has_key?(first, "uri")
     end

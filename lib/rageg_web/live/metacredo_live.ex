@@ -399,25 +399,23 @@ defmodule RagegWeb.MetacredoLive do
   # -- Private helpers --
 
   defp filter_issues(issues, category, search_query) do
-    issues
-    |> Enum.filter(fn issue ->
-      if category == "all" do
-        true
-      else
-        to_string(issue.category) == category
-      end
-    end)
-    |> Enum.filter(fn issue ->
-      if search_query == "" do
-        true
-      else
-        q = String.downcase(search_query)
-        msg = String.downcase(issue.message || "")
-        file = String.downcase(issue.filename || "")
-        check = String.downcase(issue.check || "")
+    q = String.downcase(String.trim(search_query))
 
-        String.contains?(msg, q) or String.contains?(file, q) or String.contains?(check, q)
-      end
+    Enum.filter(issues, fn issue ->
+      matches_cat = category == "all" or to_string(issue.category) == category
+
+      matches_query =
+        if q == "" do
+          true
+        else
+          msg = String.downcase(issue.message || "")
+          file = String.downcase(issue.filename || "")
+          check = String.downcase(issue.check || "")
+
+          String.contains?(msg, q) or String.contains?(file, q) or String.contains?(check, q)
+        end
+
+      matches_cat and matches_query
     end)
   end
 
