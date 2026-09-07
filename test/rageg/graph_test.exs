@@ -85,6 +85,27 @@ defmodule Rageg.GraphTest do
       assert Graph.prettify_id("module:MyApp_Repo") == "MyApp.Repo"
     end
 
+    test "parses dllb encoded function format" do
+      assert Graph.prettify_id("__function__Dllb_Application___start__2_") ==
+               "Dllb.Application.start/2"
+
+      assert Graph.prettify_id("__function__RagegWeb_Router___call__2_") ==
+               "RagegWeb.Router.call/2"
+
+      assert Graph.prettify_id("__function__Application___get_env__3_") == "Application.get_env/3"
+
+      assert Graph.prettify_id("__function__Dllb_Connection___alive___1_") ==
+               "Dllb.Connection.alive?/1"
+
+      assert Graph.prettify_id("__function____Elixir_gen_tcp____send__2_") == "gen_tcp.send/2"
+      assert Graph.prettify_id("__function__nil___match___2_") == "match?/2"
+    end
+
+    test "parses dllb encoded module format" do
+      assert Graph.prettify_id("__module__Rageg_Graph_") == "Rageg.Graph"
+      assert Graph.prettify_id("__module__MyApp_Repo_") == "MyApp.Repo"
+    end
+
     test "returns original string for unrecognized formats" do
       assert Graph.prettify_id("some_random_string") == "some_random_string"
     end

@@ -156,11 +156,9 @@ defmodule Rageg.Impact do
   defp parse_node_ref(target), do: target
 
   defp safe_atom(str) when is_binary(str) do
-    try do
-      String.to_existing_atom(str)
-    rescue
-      ArgumentError -> String.to_atom(str)
-    end
+    String.to_existing_atom(str)
+  rescue
+    ArgumentError -> String.to_atom(str)
   end
 
   defp format_ref({:function, mod, name, arity}), do: "#{mod}.#{name}/#{arity}"

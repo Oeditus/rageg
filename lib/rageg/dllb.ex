@@ -9,6 +9,9 @@ defmodule Rageg.Dllb do
   All functions handle the case where dllb is not connected gracefully.
   """
 
+  alias Rageg.Profiles.IngestCache
+  alias Ragex.Store.Backend.Dllb, as: DllbBackend
+
   @stats_file "~/.rageg/.dllb_stats.json"
 
   # SurrealDB-style RELATE edge tables that must be wiped on full reset.
@@ -103,7 +106,7 @@ defmodule Rageg.Dllb do
     end
 
     # 2. Clear per-file ingest-cache manifests.
-    Rageg.Profiles.IngestCache.clear_all!()
+    IngestCache.clear_all!()
 
     # 3. Delete all saved project profiles and clear the active state.
     Rageg.Profiles.clear_all!()
@@ -143,7 +146,7 @@ defmodule Rageg.Dllb do
   """
   @spec query(String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def query(query_string, opts \\ []) do
-    Ragex.Store.Backend.Dllb.query(query_string, opts)
+    DllbBackend.query(query_string, opts)
   rescue
     e -> {:error, Exception.message(e)}
   end
@@ -153,7 +156,7 @@ defmodule Rageg.Dllb do
   """
   @spec batch_transaction([String.t()], keyword()) :: {:ok, term()} | {:error, term()}
   def batch_transaction(query_strings, opts \\ []) do
-    Ragex.Store.Backend.Dllb.batch_transaction(query_strings, opts)
+    DllbBackend.batch_transaction(query_strings, opts)
   rescue
     e -> {:error, Exception.message(e)}
   end

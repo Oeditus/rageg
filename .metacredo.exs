@@ -5,10 +5,10 @@
       files: %{
         included: ["lib/"],
         excluded: [
-          ~r"/_build/",
-          ~r"/deps/",
-          ~r"/node_modules/",
-          ~r"/\.git/",
+          ~r"(^|/)_build/",
+          ~r"(^|/)deps/",
+          ~r"(^|/)node_modules/",
+          ~r"(^|/)\.git/",
           ~r"mix\.exs$"
         ]
       },

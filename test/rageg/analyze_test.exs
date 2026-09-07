@@ -37,4 +37,34 @@ defmodule Rageg.AnalyzeTest do
       assert match?({:error, _}, res) or match?({:ok, _}, res)
     end
   end
+
+  describe "run/2 resilience" do
+    test "handles files with invalid byte sequences without crashing process" do
+      tmp_dir =
+        System.tmp_dir!()
+        |> Path.join("rageg_invalid_byte_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp_dir)
+
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
+      # Write a file containing byte 255 (invalid UTF-8 byte)
+      invalid_file = Path.join(tmp_dir, "invalid.ex")
+
+      File.write!(
+        invalid_file,
+        <<100, 101, 102, 32, 109, 111, 100, 117, 108, 101, 32, 70, 111, 111, 32, 100, 111, 10, 32,
+          32, 64, 100, 111, 99, 32, 34, 255, 34, 10, 101, 110, 100, 10>>
+      )
+
+      # Also write a valid file
+      valid_file = Path.join(tmp_dir, "valid.ex")
+      File.write!(valid_file, "defmodule ValidModule do\n  def hello, do: :world\nend\n")
+
+      res = Analyze.run(tmp_dir, analyses: %{security: false, smells: false})
+
+      assert {:ok, %{index: index_result}} = res
+      assert index_result.files_analyzed >= 1
+    end
+  end
 end

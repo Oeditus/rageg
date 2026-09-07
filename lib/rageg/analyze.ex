@@ -104,6 +104,8 @@ defmodule Rageg.Analyze do
     end
   rescue
     e -> {:error, Exception.message(e)}
+  catch
+    kind, reason -> {:error, "#{kind}: #{inspect(reason)}"}
   end
 
   # Runs the full index + analysis pipeline and persists caches.

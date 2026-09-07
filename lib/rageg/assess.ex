@@ -9,7 +9,7 @@ defmodule Rageg.Assess do
   an AI-powered code review assessment report.
   """
 
-  alias Ragex.Agent.{Core, Memory, Report, ToolSchema}
+  alias Ragex.Agent.{Core, Executor, Memory, Report, ToolSchema}
   alias Ragex.AI.Config, as: AIConfig
   alias Ragex.Analysis.Runner
   alias Ragex.Git.Repo
@@ -282,7 +282,7 @@ defmodule Rageg.Assess do
             |> maybe_put(:provider, parse_provider(Keyword.get(opts, :provider)))
             |> maybe_put(:model, Keyword.get(opts, :model))
 
-          case Ragex.Agent.Executor.run(session.id, report_opts) do
+          case Executor.run(session.id, report_opts) do
             {:ok, result} ->
               Memory.clear_session(session.id)
               on_progress.("AI assessment report generated")
@@ -506,11 +506,9 @@ defmodule Rageg.Assess do
   defp parse_provider(nil), do: nil
 
   defp parse_provider(name) when is_binary(name) do
-    try do
-      String.to_existing_atom(name)
-    rescue
-      ArgumentError -> nil
-    end
+    String.to_existing_atom(name)
+  rescue
+    ArgumentError -> nil
   end
 
   defp parse_provider(name) when is_atom(name), do: name

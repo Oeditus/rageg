@@ -24,6 +24,7 @@ defmodule Rageg.Graph do
   @sanitize_re ~r/[^a-zA-Z0-9_]/
   @pretty_func_id_re ~r/^[A-Z][\w.]*\.\w+\/\d+$/
   @pretty_mod_id_re ~r/^[A-Z][\w.]*$/
+  @dllb_mod_id_re ~r/^__module__(?<mod>.+?)_$/
   @tuple_4_re ~r/^\{:\w+,\s*([^,]+),\s*:?(\w+),\s*(\d+)\}$/
   @tuple_2_re ~r/^\{:\w+,\s*([A-Z][\w.]*)\}$/
   @type_colon_re ~r/^\w+:(.+)$/
@@ -82,7 +83,8 @@ defmodule Rageg.Graph do
                  other
              end
            end) do
-      # Build lookup from dllb record IDs to human-readable Module.fun/arity names.
+      # Build lookup from dllb record IDs to human-readable Module.fun/arity names
+      # and build file lookup for project filtering.
       dllb_name_lookup =
         timed(:name_lookup, fn ->
           lookup = build_dllb_name_lookup(base.nodes)
@@ -90,13 +92,24 @@ defmodule Rageg.Graph do
           lookup
         end)
 
-      # Enrich nodes with additional metrics
       betweenness =
         timed(:betweenness, fn ->
           b = safe_betweenness(max_nodes)
           Logger.info("[graph:betweenness] #{map_size(b)} centrality scores")
           b
         end)
+
+      active_profile = Rageg.Profiles.active()
+
+      project_path =
+        Keyword.get(opts, :project_path) || (active_profile && active_profile.path)
+
+      {file_lookup, project_modules} =
+        if project_path do
+          timed(:project_context, fn -> build_project_context(project_path) end)
+        else
+          {%{}, MapSet.new()}
+        end
 
       nodes =
         timed(:enrich_nodes, fn ->
@@ -119,6 +132,8 @@ defmodule Rageg.Graph do
                   misses
                 end
 
+              node_file = Map.get(file_lookup, node.id)
+
               enriched =
                 node
                 |> Map.put(:id, pretty_id)
@@ -128,6 +143,7 @@ defmodule Rageg.Graph do
                 )
                 |> Map.put(:label, node_label(%{node | id: pretty_id}))
                 |> Map.put(:module_name, extract_module(pretty_id))
+                |> Map.put(:file, node_file)
 
               {enriched, misses}
             end)
@@ -139,7 +155,9 @@ defmodule Rageg.Graph do
             "[graph:name_resolution] total=#{total} lookup_hits=#{hits} prettify_fallbacks=#{miss_count}"
           )
 
-          enriched |> maybe_filter_module(module_filter)
+          enriched
+          |> filter_active_project(project_path, file_lookup, project_modules)
+          |> maybe_filter_module(module_filter)
         end)
 
       # Filter links to only include visible nodes
@@ -438,6 +456,18 @@ defmodule Rageg.Graph do
         Regex.match?(@pretty_mod_id_re, id) ->
           id
 
+        # Dllb encoded function ID: __function__Mod___fun__arity_
+        String.starts_with?(id, "__function__") ->
+          parse_dllb_function_id(id)
+
+        # Dllb encoded module ID: __module__Mod_
+        match = Regex.named_captures(@dllb_mod_id_re, id) ->
+          match["mod"]
+          |> String.replace_prefix("_Elixir_", "")
+          |> String.replace_prefix("Elixir.", "")
+          |> String.trim_leading("_")
+          |> then(&Regex.replace(~r/_(?=[A-Z])/, &1, "."))
+
         # Inspected 4-tuple: {:type, Module, :name, arity}
         match = Regex.run(@tuple_4_re, id) ->
           [_, mod_raw, name, arity] = match
@@ -460,6 +490,46 @@ defmodule Rageg.Graph do
 
     # Always strip the "Elixir." prefix from the final result
     String.replace_prefix(result, "Elixir.", "")
+  end
+
+  defp parse_dllb_function_id(id) do
+    rest = String.replace_prefix(id, "__function__", "")
+    parts = String.split(rest, "__") |> Enum.reject(&(&1 == ""))
+
+    case parts do
+      [single] ->
+        single
+
+      _ ->
+        {parts_without_arity, [arity_part]} = Enum.split(parts, -1)
+        has_trailing_op = String.starts_with?(arity_part, "_")
+        arity = String.trim(arity_part, "_")
+
+        {mod_parts, [fun_part]} = Enum.split(parts_without_arity, -1)
+
+        mod_str = Enum.join(mod_parts, "_")
+
+        mod =
+          mod_str
+          |> String.replace_prefix("_Elixir_", "")
+          |> String.replace_prefix("Elixir_", "")
+          |> String.replace_prefix("Elixir.", "")
+          |> String.trim_leading("_")
+
+        mod =
+          if mod in ["", "nil"] do
+            nil
+          else
+            Regex.replace(~r/_(?=[A-Z])/, mod, ".")
+          end
+
+        fun_base = String.trim_leading(fun_part, "_")
+        fun = if has_trailing_op, do: fun_base <> "?", else: fun_base
+
+        format_human_name(mod, fun, arity)
+    end
+  rescue
+    _ -> id
   end
 
   # Parses underscore-encoded identifiers like "access_Kernel_max_2"
@@ -616,4 +686,83 @@ defmodule Rageg.Graph do
 
   defp extract_arity(:function, {_, _, arity}), do: arity
   defp extract_arity(_, _), do: nil
+
+  defp build_project_context(project_path) do
+    store_nodes = Store.list_nodes(nil, 5_000)
+
+    file_lookup =
+      store_nodes
+      |> Enum.flat_map(fn n ->
+        data = n[:data] || %{}
+        file = data[:file] || data[:file_path]
+
+        if is_binary(file) do
+          dllb_id = data[:id]
+          bare_id = bare_ast_node_id(dllb_id)
+          reconstructed = reconstruct_meta_ast_id(data)
+          pretty = prettify_id(n.id)
+
+          [
+            {n.id, file},
+            {dllb_id, file},
+            {bare_id, file},
+            {reconstructed, file},
+            {pretty, file}
+          ]
+          |> Enum.reject(fn {k, _} -> is_nil(k) end)
+        else
+          []
+        end
+      end)
+      |> Map.new()
+
+    project_modules =
+      store_nodes
+      |> Enum.filter(fn n ->
+        data = n[:data] || %{}
+        file = data[:file] || data[:file_path]
+
+        is_binary(file) and
+          (String.starts_with?(file, project_path) or not String.starts_with?(file, "/"))
+      end)
+      |> Enum.flat_map(fn n ->
+        data = n[:data] || %{}
+        mod = data[:module] || n.id
+        [mod, maybe_strip_elixir(to_nil_string(mod))]
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&to_string/1)
+      |> MapSet.new()
+
+    {file_lookup, project_modules}
+  end
+
+  defp filter_active_project(nodes, nil, _file_lookup, _project_modules), do: nodes
+
+  defp filter_active_project(nodes, project_path, file_lookup, project_modules)
+       when is_binary(project_path) do
+    Enum.filter(nodes, fn node ->
+      file =
+        Map.get(file_lookup, node.id) || node[:file] || get_in(node, [:data, :file]) ||
+          get_in(node, [:data, :file_path])
+
+      pretty_id = prettify_id(node.id)
+      mod_name = extract_module(pretty_id)
+
+      cond do
+        is_binary(file) and String.starts_with?(file, project_path) ->
+          true
+
+        is_binary(file) and not String.starts_with?(file, "/") ->
+          true
+
+        MapSet.member?(project_modules, mod_name) or
+            MapSet.member?(project_modules, "Elixir.#{mod_name}") ->
+          true
+
+        true ->
+          false
+      end
+    end)
+  end
 end

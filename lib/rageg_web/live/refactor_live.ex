@@ -302,10 +302,8 @@ defmodule RagegWeb.RefactorLive do
   defp parse_param_value(val), do: val
 
   defp safe_key_atom(key) when is_binary(key) do
-    try do
-      String.to_existing_atom(key)
-    rescue
-      ArgumentError -> String.to_atom(key)
-    end
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> String.to_atom(key)
   end
 end

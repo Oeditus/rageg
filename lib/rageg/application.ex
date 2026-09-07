@@ -9,6 +9,9 @@ defmodule Rageg.Application do
 
   use Application
 
+  alias Rageg.Profiles.IngestTelemetry
+  alias Ragex.Store.Backend
+
   @impl true
   def start(_type, _args) do
     # Select the Nx/EXLA backend (CUDA when available, else CPU) before anything
@@ -20,7 +23,7 @@ defmodule Rageg.Application do
 
     # Log active storage backend configuration
     require Logger
-    storage_mod = Ragex.Store.Backend.module()
+    storage_mod = Backend.module()
     cache_mod = Metastatic.Cache.impl()
 
     Logger.info(
@@ -28,7 +31,7 @@ defmodule Rageg.Application do
     )
 
     # Attach Logger-backed telemetry handlers
-    Rageg.Profiles.IngestTelemetry.attach()
+    IngestTelemetry.attach()
     Rageg.Graph.Telemetry.attach()
 
     children = [

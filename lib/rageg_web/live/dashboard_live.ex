@@ -16,6 +16,11 @@ defmodule RagegWeb.DashboardLive do
   use RagegWeb, :live_view
 
   alias Rageg.Stats
+  alias Ragex.AI.Cache, as: AICache
+  alias Ragex.AI.Usage, as: AIUsage
+  alias Ragex.Analysis.Quality, as: AnalysisQuality
+  alias Ragex.Embeddings.Persistence, as: EmbeddingPersistence
+  alias Ragex.Graph.Store, as: GraphStore
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -62,11 +67,11 @@ defmodule RagegWeb.DashboardLive do
     Rageg.Dllb.clear_all!()
 
     # Clear the Ragex in-memory graph, vector store, AI cache, and usage.
-    safe_clear(fn -> Ragex.Graph.Store.clear() end)
-    safe_clear(fn -> Ragex.AI.Cache.clear() end)
-    safe_clear(fn -> Ragex.Embeddings.Persistence.clear(:all) end)
-    safe_clear(fn -> Ragex.Analysis.Quality.clear_all() end)
-    safe_clear(fn -> Ragex.AI.Usage.reset_stats() end)
+    safe_clear(fn -> GraphStore.clear() end)
+    safe_clear(fn -> AICache.clear() end)
+    safe_clear(fn -> EmbeddingPersistence.clear(:all) end)
+    safe_clear(fn -> AnalysisQuality.clear_all() end)
+    safe_clear(fn -> AIUsage.reset_stats() end)
 
     # Apply the empty snapshot immediately so the counters reset in the UI
     # without waiting for the next background poll.

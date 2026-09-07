@@ -73,29 +73,20 @@ defmodule Rageg.MixProject do
       # Nx/EXLA backend used by Rageg.NxBackend).
       {:image, "~> 0.54"},
       {:bumblebee, "~> 0.5"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       # Always use local path deps in development; hex versions for prod releases.
       # The walk_tree infinite-loop fix in dllb_ex and the Store backend
       # delegation fix in ragex are required for rageg to function correctly.
-    ] ++
-      if Mix.env() == :prod and is_nil(System.get_env("LOCAL_OEDITUS")),
-        do: [
-          {:ragex, "~> 0.30"},
-          {:dllb, "~> 0.8"},
-          {:metacredo, "~> 0.4"},
-          {:metastatic, "~> 0.26"}
-        ],
-        else: [
-          {:ragex, path: "../ragex", override: true},
-          {:dllb, path: "../dllb_ex", override: true},
-          {:metacredo, path: "../metacredo", override: true},
-          {:metastatic, path: "../metastatic", override: true},
-          # Pin exla/nx to 0.13.0 for local dev/test builds: exla >= 0.13.1
-          # does not compile against the CUDA 13.x headers installed on this
-          # machine (compile with EXLA_CPU_ONLY=1 or a matching CUDA toolkit).
-          {:exla, "== 0.13.0", override: true},
-          {:nx, "== 0.13.0", override: true}
-        ]
+      {:ragex, "~> 0.30"},
+      {:dllb, "~> 0.8"},
+      {:metacredo, "~> 0.4"},
+      {:metastatic, "~> 0.26"},
+      # Pin exla/nx to 0.13.0 for local dev/test builds: exla >= 0.13.1
+      # does not compile against the CUDA 13.x headers installed on this
+      # machine (compile with EXLA_CPU_ONLY=1 or a matching CUDA toolkit).
+      {:exla, "== 0.13.0", override: true},
+      {:nx, "== 0.13.0", override: true}
+    ]
   end
 
   # Aliases are shortcuts or tasks specific to the current project.
@@ -114,14 +105,14 @@ defmodule Rageg.MixProject do
         "esbuild rageg --minify",
         "phx.digest"
       ],
-      quality: ["format", "credo", "metacredo"],
-      "quality.ci": ["format --check-formatted", "credo", "metacredo"],
+      quality: ["format", "credo", "metacredo --path lib"],
+      "quality.ci": ["format --check-formatted", "credo", "metacredo --path lib"],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
         "credo",
-        "metacredo",
+        "metacredo --path lib",
         "test"
       ]
     ]

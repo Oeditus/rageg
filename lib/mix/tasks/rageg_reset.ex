@@ -26,6 +26,12 @@ defmodule Mix.Tasks.Rageg.Reset do
 
   use Mix.Task
 
+  alias Ragex.AI.Cache
+  alias Ragex.AI.Usage
+  alias Ragex.Analysis.Quality
+  alias Ragex.Embeddings.Persistence
+  alias Ragex.Graph.Store
+
   @impl Mix.Task
   def run(_args) do
     Mix.shell().info("Resetting rageg state...")
@@ -38,23 +44,23 @@ defmodule Mix.Tasks.Rageg.Reset do
     end)
 
     step("Clearing Ragex knowledge graph", fn ->
-      Ragex.Graph.Store.clear()
+      Store.clear()
     end)
 
     step("Clearing Ragex AI cache", fn ->
-      Ragex.AI.Cache.clear()
+      Cache.clear()
     end)
 
     step("Clearing Ragex embedding persistence cache", fn ->
-      Ragex.Embeddings.Persistence.clear(:all)
+      Persistence.clear(:all)
     end)
 
     step("Clearing Ragex analysis cache", fn ->
-      Ragex.Analysis.Quality.clear_all()
+      Quality.clear_all()
     end)
 
     step("Resetting Ragex AI usage counters", fn ->
-      Ragex.AI.Usage.reset_stats()
+      Usage.reset_stats()
     end)
 
     Mix.shell().info("Done. State is clean.")

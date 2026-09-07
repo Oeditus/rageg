@@ -7,7 +7,10 @@ defmodule Rageg.Refactor do
   operation execution, preview, and rollback capabilities.
   """
 
+  alias Ragex.Editor.Conflict, as: EditorConflict
+  alias Ragex.Editor.Diff, as: EditorDiff
   alias Ragex.Editor.{Refactor, Undo}
+  alias Ragex.Editor.Refactor.Elixir, as: RefactorElixir
   alias Ragex.Graph.Store
 
   @type operation ::
@@ -499,7 +502,7 @@ defmodule Rageg.Refactor do
         transformed =
           Map.new(file_contents, fn {path, content} ->
             {:ok, new} =
-              Ragex.Editor.Refactor.Elixir.rename_function(
+              RefactorElixir.rename_function(
                 content,
                 params.old_name,
                 params.new_name,
@@ -515,7 +518,7 @@ defmodule Rageg.Refactor do
         transformed =
           Map.new(file_contents, fn {path, content} ->
             {:ok, new} =
-              Ragex.Editor.Refactor.Elixir.rename_module(
+              RefactorElixir.rename_module(
                 content,
                 params.old_name,
                 params.new_name
@@ -532,7 +535,7 @@ defmodule Rageg.Refactor do
         transformed =
           Map.new(file_contents, fn {path, content} ->
             {:ok, new} =
-              Ragex.Editor.Refactor.Elixir.change_signature(
+              RefactorElixir.change_signature(
                 content,
                 :Dummy,
                 params.function_name,
@@ -549,7 +552,7 @@ defmodule Rageg.Refactor do
         transformed =
           Map.new(file_contents, fn {path, content} ->
             {:ok, new} =
-              Ragex.Editor.Refactor.Elixir.inline_function(
+              RefactorElixir.inline_function(
                 content,
                 :Dummy,
                 params.function_name,
@@ -565,7 +568,7 @@ defmodule Rageg.Refactor do
         transformed =
           Map.new(file_contents, fn {path, content} ->
             {:ok, new} =
-              Ragex.Editor.Refactor.Elixir.convert_visibility(
+              RefactorElixir.convert_visibility(
                 content,
                 params.module,
                 params.function_name,
@@ -582,7 +585,7 @@ defmodule Rageg.Refactor do
         transformed =
           Map.new(file_contents, fn {path, content} ->
             {:ok, new} =
-              Ragex.Editor.Refactor.Elixir.rename_parameter(
+              RefactorElixir.rename_parameter(
                 content,
                 params.module,
                 params.function,
@@ -600,7 +603,7 @@ defmodule Rageg.Refactor do
         transformed =
           Map.new(file_contents, fn {path, content} ->
             {:ok, new} =
-              Ragex.Editor.Refactor.Elixir.extract_function(
+              RefactorElixir.extract_function(
                 content,
                 params.module,
                 params.source_function,
@@ -627,7 +630,7 @@ defmodule Rageg.Refactor do
         target_content = Map.get(file_contents, target_file, "")
 
         {:ok, res} =
-          Ragex.Editor.Refactor.Elixir.move_function(
+          RefactorElixir.move_function(
             source_content,
             target_content,
             params.source_module,
@@ -653,7 +656,7 @@ defmodule Rageg.Refactor do
         functions = parse_functions_list(params.functions)
 
         {:ok, res} =
-          Ragex.Editor.Refactor.Elixir.extract_module(
+          RefactorElixir.extract_module(
             source_content,
             params.source_module,
             params.new_module,
@@ -676,12 +679,12 @@ defmodule Rageg.Refactor do
     diffs =
       Enum.map(transformed_contents, fn {path, {old_content, new_content}} ->
         {:ok, diff} =
-          Ragex.Editor.Diff.generate_diff(old_content, new_content,
+          EditorDiff.generate_diff(old_content, new_content,
             old_file: path,
             new_file: path
           )
 
-        {:ok, html} = Ragex.Editor.Diff.format_diff(diff, :html)
+        {:ok, html} = EditorDiff.format_diff(diff, :html)
 
         %{
           file: path,
@@ -695,11 +698,11 @@ defmodule Rageg.Refactor do
   end
 
   defp check_operation_conflicts(:rename_function, params) do
-    Ragex.Editor.Conflict.check_rename_conflicts(params.module, params.new_name, params.arity)
+    EditorConflict.check_rename_conflicts(params.module, params.new_name, params.arity)
   end
 
   defp check_operation_conflicts(:move_function, params) do
-    Ragex.Editor.Conflict.check_move_conflicts(
+    EditorConflict.check_move_conflicts(
       params.source_module,
       params.target_module,
       params.function_name,
@@ -710,7 +713,7 @@ defmodule Rageg.Refactor do
   defp check_operation_conflicts(:extract_module, params) do
     functions = parse_functions_list(params.functions)
 
-    Ragex.Editor.Conflict.check_extract_module_conflicts(
+    EditorConflict.check_extract_module_conflicts(
       params.source_module,
       params.new_module,
       functions
@@ -718,7 +721,7 @@ defmodule Rageg.Refactor do
   end
 
   defp check_operation_conflicts(:convert_visibility, params) do
-    Ragex.Editor.Conflict.check_visibility_conflicts(
+    EditorConflict.check_visibility_conflicts(
       params.module,
       params.function_name,
       params.arity,

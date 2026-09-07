@@ -6,6 +6,12 @@ defmodule Rageg.MCP do
   and execute tools with arbitrary parameter payloads.
   """
 
+  alias Ragex.Agent.ToolSchema
+  alias Ragex.MCP.Handlers.Prompts, as: MCPPrompts
+  alias Ragex.MCP.Handlers.Resources, as: MCPResources
+  alias Ragex.MCP.Handlers.Tools, as: MCPTools
+  alias Ragex.MCP.SocketPath, as: MCPSocketPath
+
   @type tool_schema :: %{
           name: String.t(),
           description: String.t(),
@@ -32,7 +38,7 @@ defmodule Rageg.MCP do
   """
   @spec list_tools() :: [tool_schema()]
   def list_tools do
-    res = Ragex.MCP.Handlers.Tools.list_tools()
+    res = MCPTools.list_tools()
 
     res
     |> Map.get(:tools, [])
@@ -84,7 +90,7 @@ defmodule Rageg.MCP do
   def call_tool(tool_name, arguments \\ %{}) when is_binary(tool_name) and is_map(arguments) do
     start_time = System.monotonic_time(:millisecond)
 
-    res = Ragex.MCP.Handlers.Tools.call_tool(tool_name, arguments)
+    res = MCPTools.call_tool(tool_name, arguments)
 
     elapsed_ms = System.monotonic_time(:millisecond) - start_time
 
@@ -134,7 +140,7 @@ defmodule Rageg.MCP do
   """
   @spec socket_path() :: String.t()
   def socket_path do
-    Ragex.MCP.SocketPath.compute_string()
+    MCPSocketPath.compute_string()
   rescue
     _ -> "/tmp/ragex_mcp.sock"
   end
@@ -144,7 +150,7 @@ defmodule Rageg.MCP do
   """
   @spec list_resources() :: [map()]
   def list_resources do
-    res = Ragex.MCP.Handlers.Resources.list_resources()
+    res = MCPResources.list_resources()
     Map.get(res, :resources, [])
   rescue
     _ -> []
@@ -155,7 +161,7 @@ defmodule Rageg.MCP do
   """
   @spec read_resource(String.t()) :: {:ok, term()} | {:error, term()}
   def read_resource(uri) when is_binary(uri) do
-    Ragex.MCP.Handlers.Resources.read_resource(uri)
+    MCPResources.read_resource(uri)
   rescue
     e -> {:error, Exception.message(e)}
   end
@@ -165,7 +171,7 @@ defmodule Rageg.MCP do
   """
   @spec list_prompts() :: [map()]
   def list_prompts do
-    res = Ragex.MCP.Handlers.Prompts.list_prompts()
+    res = MCPPrompts.list_prompts()
     Map.get(res, :prompts, [])
   rescue
     _ -> []
@@ -176,7 +182,7 @@ defmodule Rageg.MCP do
   """
   @spec rag_tool_names() :: [String.t()]
   def rag_tool_names do
-    Ragex.Agent.ToolSchema.rag_tool_names()
+    ToolSchema.rag_tool_names()
   rescue
     _ ->
       [

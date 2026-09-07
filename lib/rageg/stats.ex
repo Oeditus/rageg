@@ -30,6 +30,11 @@ defmodule Rageg.Stats do
 
   use GenServer
 
+  alias Ragex.AI.Cache, as: AICache
+  alias Ragex.AI.Usage, as: AIUsage
+  alias Ragex.Embeddings.Bumblebee, as: EmbeddingBumblebee
+  alias Ragex.Graph.Algorithms, as: GraphAlgorithms
+
   @topic "stats"
   @default_interval 3_000
 
@@ -150,7 +155,7 @@ defmodule Rageg.Stats do
   # dllb `GRAPH COMPONENTS` when the dllb backend is active), guarding against
   # any failure or process exit so a stats poll never crashes.
   defp graph_components do
-    Ragex.Graph.Algorithms.connected_components()
+    GraphAlgorithms.connected_components()
   rescue
     _ -> 0
   catch
@@ -166,7 +171,7 @@ defmodule Rageg.Stats do
 
     # Model name comes from Bumblebee, not VectorStore
     model_name =
-      case Ragex.Embeddings.Bumblebee.model_info() do
+      case EmbeddingBumblebee.model_info() do
         %{name: name} -> name
         _ -> "n/a"
       end
@@ -197,7 +202,7 @@ defmodule Rageg.Stats do
   end
 
   defp fetch_cache_stats do
-    case Ragex.AI.Cache.stats() do
+    case AICache.stats() do
       stats when is_map(stats) ->
         hits = Map.get(stats, :hits, 0)
         misses = Map.get(stats, :misses, 0)
@@ -218,7 +223,7 @@ defmodule Rageg.Stats do
   end
 
   defp fetch_ai_usage do
-    case Ragex.AI.Usage.get_stats(:all) do
+    case AIUsage.get_stats(:all) do
       stats when is_map(stats) ->
         %{
           total_requests: Map.get(stats, :total_requests, 0),
