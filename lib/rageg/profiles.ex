@@ -254,19 +254,59 @@ defmodule Rageg.Profiles do
 
         Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, indexing_profile})
 
-        activate_project(indexing_profile, on_progress)
+        case activate_project(indexing_profile, on_progress) do
+          :ok ->
+            ready_profile = Profile.mark_ingested(indexing_profile)
+            save_profile(ready_profile, state.profiles_dir)
 
-        ready_profile = Profile.mark_ingested(indexing_profile)
-        save_profile(ready_profile, state.profiles_dir)
+            Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready_profile})
+            on_progress.("Profile active: #{ready_profile.name}")
 
-        Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready_profile})
-        on_progress.("Profile active: #{ready_profile.name}")
+            {:reply, {:ok, ready_profile}, %{state | active: ready_profile}}
 
-        {:reply, {:ok, ready_profile}, %{state | active: ready_profile}}
+          {:error, reason} ->
+            # Activation did not complete (e.g. the per-project dllb server
+            # could not be brought up in time). Keep the profile as the active
+            # target but do not falsely mark it "ready": surface the failure
+            # to the caller so the UI can stop showing the switch spinner and
+            # report the reason.
+            failed_profile = %{indexing_profile | status: "error"}
+            save_profile(failed_profile, state.profiles_dir)
+
+            Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, failed_profile})
+            on_progress.("Profile activation failed: #{inspect(reason)}")
+
+            {:reply, {:error, reason}, %{state | active: failed_profile}}
+        end
     end
   end
 
+  # Runs the full per-project activation pipeline. Any failure -- including a
+  # process exit (e.g. a `GenServer.call` timeout against the dllb
+  # ProjectManager while it is busy bringing up a project's server) -- is
+  # caught and returned as `{:error, message}` so the caller can degrade
+  # gracefully instead of crashing the Profiles GenServer and wedging the UI.
   defp activate_project(%Profile{} = profile, on_progress) do
+    try do
+      do_activate_project(profile, on_progress)
+    rescue
+      e ->
+        activation_failure(on_progress, Exception.message(e))
+    catch
+      :exit, reason ->
+        activation_failure(on_progress, "interrupted: #{inspect(reason)}")
+
+      :throw, value ->
+        activation_failure(on_progress, "aborted: #{inspect(value)}")
+    end
+  end
+
+  defp activation_failure(on_progress, message) do
+    on_progress.("Activation notice: #{message}")
+    {:error, message}
+  end
+
+  defp do_activate_project(%Profile{} = profile, on_progress) do
     # 1. Set environment variables to project path without altering global CWD
     if File.dir?(profile.path) do
       System.put_env("RAGEX_PROJECT", profile.path)
@@ -312,10 +352,6 @@ defmodule Rageg.Profiles do
 
     on_progress.("Project ready")
     :ok
-  rescue
-    e ->
-      on_progress.("Activation notice: #{Exception.message(e)}")
-      {:error, Exception.message(e)}
   end
 
   defp wait_for_bumblebee_ready(deadline \\ System.monotonic_time(:millisecond) + 3_000) do

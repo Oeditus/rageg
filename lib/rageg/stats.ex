@@ -114,7 +114,18 @@ defmodule Rageg.Stats do
 
   @impl GenServer
   def handle_info(:poll, state) do
-    snapshot = fetch_all()
+    # A poll must never crash the collector (e.g. if an underlying service is
+    # mid-restart or busy bringing up a project's dllb server); on any failure
+    # keep the previous snapshot and keep polling.
+    snapshot =
+      try do
+        fetch_all()
+      rescue
+        _ -> state.snapshot
+      catch
+        _, _ -> state.snapshot
+      end
+
     Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:stats_updated, snapshot})
     Process.send_after(self(), :poll, state.interval)
     {:noreply, %{state | snapshot: snapshot}}
@@ -128,6 +139,8 @@ defmodule Rageg.Stats do
         Rageg.Dllb.aggregate_ingest_stats()
       rescue
         _ -> %{nodes: 0, edges: 0, projects: 0}
+      catch
+        _, _ -> %{nodes: 0, edges: 0, projects: 0}
       end
 
     %{
@@ -183,6 +196,10 @@ defmodule Rageg.Stats do
     }
   rescue
     _ -> %{model: "n/a", dimensions: 0, total: 0}
+  catch
+    # VectorStore.stats/0 can raise an exit when its backing dllb pool is busy
+    # (e.g. mid project-activation); never let that kill the Stats collector.
+    _, _ -> %{model: "n/a", dimensions: 0, total: 0}
   end
 
   # VectorStore.stats/0 derives dimensions from a sample embedding, which the
@@ -220,6 +237,8 @@ defmodule Rageg.Stats do
     end
   rescue
     _ -> %{hit_rate: 0.0, misses: 0, evictions: 0, size: 0}
+  catch
+    _, _ -> %{hit_rate: 0.0, misses: 0, evictions: 0, size: 0}
   end
 
   defp fetch_ai_usage do
@@ -236,6 +255,8 @@ defmodule Rageg.Stats do
     end
   rescue
     _ -> %{total_requests: 0, total_tokens: 0, estimated_cost: 0.0}
+  catch
+    _, _ -> %{total_requests: 0, total_tokens: 0, estimated_cost: 0.0}
   end
 
   defp fetch_dllb_health(ingested) do
@@ -251,6 +272,8 @@ defmodule Rageg.Stats do
     }
   rescue
     _ -> %{connected: false, pool_size: 0, latency_ms: 0, nodes: 0, edges: 0, projects: 0}
+  catch
+    _, _ -> %{connected: false, pool_size: 0, latency_ms: 0, nodes: 0, edges: 0, projects: 0}
   end
 
   defp check_dllb_connection do
@@ -266,5 +289,7 @@ defmodule Rageg.Stats do
     end
   rescue
     _ -> {0, false}
+  catch
+    _, _ -> {0, false}
   end
 end

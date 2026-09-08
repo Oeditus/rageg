@@ -100,6 +100,27 @@ defmodule Rageg.ProfilesTest do
       assert System.get_env("RAGEX_AUTO_ANALYZE") == Path.expand(tmp_dir)
     end
 
+    test "switch/2 degrades gracefully when activation fails mid-pipeline" do
+      tmp_dir = System.tmp_dir!() |> Path.join("rageg_proj_fail_#{:rand.uniform(10_000)}")
+      File.mkdir_p!(tmp_dir)
+      on_exit(fn -> File.rm_rf(tmp_dir) end)
+
+      {:ok, profile} = Profiles.create(tmp_dir, "Fail Proj")
+
+      # Force the activation pipeline to blow up (here via the progress
+      # callback) so we exercise the exit/exception guard inside
+      # activate_project/2. The switch must return an error and leave the
+      # Profiles GenServer alive rather than crashing it.
+      boom_progress = fn msg ->
+        if msg == "Project ready", do: exit(:activation_boom), else: :ok
+      end
+
+      assert {:error, reason} = Profiles.switch(profile.id, on_progress: boom_progress)
+      assert reason =~ "activation_boom"
+      assert is_list(Profiles.list())
+      assert Profiles.active().status == "error"
+    end
+
     test "topic/0 returns the PubSub topic" do
       assert Profiles.topic() == "profiles"
     end
