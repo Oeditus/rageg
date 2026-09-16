@@ -27,6 +27,15 @@ defmodule RagegWeb.Endpoint do
     only: RagegWeb.static_paths(),
     raise_on_missing_only: code_reloading?
 
+  # Tidewave provides a development-time MCP server (and a browser toolbar) for
+  # AI coding agents. It must be mounted **before** the code-reloading block so
+  # that it is reached before the request body is parsed (Tidewave raises if the
+  # body has already been fetched). The plug forwards `/tidewave/*` to
+  # `Tidewave.Router`, which serves `/tidewave/mcp` (GET -> 405, POST -> MCP).
+  if Mix.env() == :dev do
+    plug Tidewave
+  end
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do

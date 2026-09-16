@@ -43,3 +43,17 @@ npm-debug.log
 
 # Ragex runtime data (per-project dllb database, sockets, instance state).
 /.ragex/
+
+# Rageg runtime data (per-project dllb stats, ingest/metacredo caches).
+/.rageg/
+
+# Yoke agent runtime state (sessions, job logs, tool payloads).
+/.yoke/
+
+# Local toolchain caches created by mix/hex and native deps (hex archive,
+# rebar3/rustler/xla build caches, bun downloads). These are machine-local and
+# must not be committed.
+/.hex/
+/.mix/
+/.cache/
+/.bun/

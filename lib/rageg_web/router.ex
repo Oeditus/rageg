@@ -15,6 +15,12 @@ defmodule RagegWeb.Router do
   - `/embeddings`    -- Embedding Space
   - `/analyze`       -- Analysis Runner
   - `/dllb/*`        -- dllb Backend Explorer
+
+  Development-only (when Tidewave is available):
+
+  - `/tidewave/mcp`  -- Tidewave MCP endpoint (served by the `Tidewave` plug)
+  - `/.well-known/oauth-protected-resource` -- OAuth 2.0 Protected Resource
+    Metadata (RFC 9728) describing the MCP endpoint
   """
 
   use RagegWeb, :router
@@ -79,6 +85,19 @@ defmodule RagegWeb.Router do
 
       # Configuration
       live "/configuration", ConfigurationLive, :index
+    end
+  end
+
+  # Development-only OAuth 2.0 Protected Resource Metadata (RFC 9728) for the
+  # Tidewave MCP endpoint. Tidewave itself only 404s `/.well-known/*`, so we
+  # serve a reasonable metadata document here instead. See
+  # `RagegWeb.OAuthMetadataController`.
+  if Mix.env() == :dev do
+    scope "/.well-known", RagegWeb do
+      pipe_through :api
+
+      get "/oauth-protected-resource", OAuthMetadataController, :show
+      get "/oauth-protected-resource/tidewave/mcp", OAuthMetadataController, :show
     end
   end
 end
