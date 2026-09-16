@@ -11,7 +11,7 @@ defmodule Rageg.Analyze do
   Analysis results are cached via `Ragex.Analysis.Cache`.
   """
 
-  alias Ragex.Analysis.{Cache, LocationEnricher, Runner}
+  alias Ragex.Analysis.{Cache, Exclusions, LocationEnricher, Runner}
   alias Ragex.Embeddings.Persistence, as: EmbeddingsPersistence
   alias Ragex.Graph.Persistence, as: GraphPersistence
   alias Ragex.Graph.Store
@@ -216,5 +216,30 @@ defmodule Rageg.Analyze do
     end
   rescue
     e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Loads exclusion rules defined in project `.ragex.exs` configuration if present.
+  """
+  @spec load_exclusions(String.t() | nil) :: list()
+  def load_exclusions(path \\ nil) do
+    if Code.ensure_loaded?(Ragex.Analysis.Exclusions) do
+      Exclusions.load(path)
+    else
+      []
+    end
+  rescue
+    _ -> []
+  end
+
+  @doc """
+  Checks if a `.ragex.exs` configuration file exists in the given directory path.
+  """
+  @spec has_config?(String.t()) :: boolean()
+  def has_config?(path) when is_binary(path) do
+    config_path = Path.join(path, ".ragex.exs")
+    File.regular?(config_path)
+  rescue
+    _ -> false
   end
 end

@@ -105,14 +105,13 @@ defmodule Rageg.MixProject do
         "esbuild rageg --minify",
         "phx.digest"
       ],
-      quality: ["format", "credo", "metacredo --path lib"],
-      "quality.ci": ["format --check-formatted", "credo", "metacredo --path lib"],
+      quality: ["format", "credo"],
+      "quality.ci": ["format --check-formatted", "credo"],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
         "credo",
-        "metacredo --path lib",
         "test"
       ]
     ]

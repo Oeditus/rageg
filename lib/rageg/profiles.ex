@@ -287,18 +287,16 @@ defmodule Rageg.Profiles do
   # caught and returned as `{:error, message}` so the caller can degrade
   # gracefully instead of crashing the Profiles GenServer and wedging the UI.
   defp activate_project(%Profile{} = profile, on_progress) do
-    try do
-      do_activate_project(profile, on_progress)
-    rescue
-      e ->
-        activation_failure(on_progress, Exception.message(e))
-    catch
-      :exit, reason ->
-        activation_failure(on_progress, "interrupted: #{inspect(reason)}")
+    do_activate_project(profile, on_progress)
+  rescue
+    e ->
+      activation_failure(on_progress, Exception.message(e))
+  catch
+    :exit, reason ->
+      activation_failure(on_progress, "interrupted: #{inspect(reason)}")
 
-      :throw, value ->
-        activation_failure(on_progress, "aborted: #{inspect(value)}")
-    end
+    :throw, value ->
+      activation_failure(on_progress, "aborted: #{inspect(value)}")
   end
 
   defp activation_failure(on_progress, message) do

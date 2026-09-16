@@ -88,6 +88,32 @@ defmodule Rageg.Plugins do
     e -> {:error, Exception.message(e)}
   end
 
+  @doc """
+  Dispatches a single tool call via the plugin orchestrator.
+  """
+  def dispatch_tool(tool_name, args) when is_binary(tool_name) and is_map(args) do
+    if Process.whereis(Ragex.Plugin.Registry) do
+      Ragex.Plugin.Registry.dispatch_tool(tool_name, args)
+    else
+      {:error, :registry_not_running}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Returns topological dependency mapping for all registered plugins.
+  """
+  def list_plugin_dependencies do
+    if Process.whereis(Ragex.Plugin.Registry) do
+      Ragex.Plugin.Registry.list_plugin_dependencies()
+    else
+      %{}
+    end
+  rescue
+    _ -> %{}
+  end
+
   defp normalize_id(id) when is_atom(id), do: id
 
   defp normalize_id(id) when is_binary(id) do
