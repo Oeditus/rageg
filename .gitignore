@@ -57,3 +57,7 @@ npm-debug.log
 /.mix/
 /.cache/
 /.bun/
+
+# Local dllb database and socket files
+/*.redb*
+/*.sock

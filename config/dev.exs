@@ -16,7 +16,8 @@ config :rageg, RagegWeb.Endpoint,
   secret_key_base: "+98E2HEIU4Y4A8VoUIRBQapADlw0V/I2w9LYqVhdLcozfi3opXE6yJDU/6A/ltlm",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:rageg, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:rageg, ~w(--watch)]}
+    tailwind: {Tailwind, :install_and_run, [:rageg, ~w(--watch)]},
+    dllb: {Rageg.Dllb.Server, :watch, []}
   ]
 
 # ## SSL Support
@@ -78,8 +79,7 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
-# Enable dllb connection pool in development
-# Make sure dllb server is running: cargo run --release -p dllb-server
+# Enable dllb connection pool in development (managed via endpoint watcher above)
 config :dllb,
   enabled: true,
   host: "127.0.0.1",

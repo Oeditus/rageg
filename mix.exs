@@ -78,15 +78,12 @@ defmodule Rageg.MixProject do
       # Always use local path deps in development; hex versions for prod releases.
       # The walk_tree infinite-loop fix in dllb_ex and the Store backend
       # delegation fix in ragex are required for rageg to function correctly.
-      {:ragex, "~> 0.30"},
+      {:ragex, "~> 0.34"},
       {:dllb, "~> 0.8"},
       {:metacredo, "~> 0.4"},
       {:metastatic, "~> 0.26"},
-      # Pin exla/nx to 0.13.0 for local dev/test builds: exla >= 0.13.1
-      # does not compile against the CUDA 13.x headers installed on this
-      # machine (compile with EXLA_CPU_ONLY=1 or a matching CUDA toolkit).
-      {:exla, "== 0.13.0", override: true},
-      {:nx, "== 0.13.0", override: true}
+      {:exla, "~> 1.0", override: true},
+      {:nx, "~> 1.0", override: true}
     ]
   end
 
