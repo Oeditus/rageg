@@ -13,6 +13,7 @@ defmodule RagegWeb.AuditLive do
   use RagegWeb, :live_view
 
   alias Rageg.Chat
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -31,6 +32,7 @@ defmodule RagegWeb.AuditLive do
      |> assign(report: nil)
      |> assign(summary: nil)
      |> assign(session_id: nil)
+     |> assign(job_tag: nil)
      |> assign(error: nil)
      |> assign(provider: :deepseek_r1)}
   end
@@ -50,12 +52,12 @@ defmodule RagegWeb.AuditLive do
     if path == "" do
       {:noreply, assign(socket, error: gettext("Enter a project path"))}
     else
-      pid = self()
+      provider = socket.assigns.provider
 
-      Task.start(fn ->
-        result = Chat.run_audit(path, provider: socket.assigns.provider)
-        send(pid, {:audit_complete, result})
-      end)
+      socket =
+        TaskRunner.start(socket, :audit, fn ->
+          Chat.run_audit(path, provider: provider)
+        end)
 
       {:noreply, assign(socket, running: true, error: nil, report: nil, summary: nil)}
     end
@@ -100,11 +102,12 @@ defmodule RagegWeb.AuditLive do
     {:noreply, assign(socket, project_path: path)}
   end
 
-  def handle_info({:audit_complete, {:ok, result}}, socket) do
+  def handle_info({:task_result, :audit, {:ok, result}}, socket) do
     {:noreply,
      socket
      |> assign(
        running: false,
+       job_tag: nil,
        report: result.report,
        summary: result[:summary] || result[:issues],
        session_id: result.session_id,
@@ -112,8 +115,17 @@ defmodule RagegWeb.AuditLive do
      )}
   end
 
-  def handle_info({:audit_complete, {:error, reason}}, socket) do
-    {:noreply, assign(socket, running: false, error: to_string(reason))}
+  def handle_info({:task_result, :audit, {:error, reason}}, socket) do
+    {:noreply, assign(socket, running: false, job_tag: nil, error: to_string(reason))}
+  end
+
+  def handle_info({:task_error, :audit, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       running: false,
+       job_tag: nil,
+       error: gettext("Audit failed: %{reason}", reason: inspect(reason))
+     )}
   end
 
   @impl Phoenix.LiveView

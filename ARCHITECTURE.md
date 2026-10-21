@@ -52,6 +52,13 @@ LiveView hooks:
 3. The hook renders using D3.js / Cytoscape.js / CodeMirror.
 4. User interactions in JS call back via `pushEvent` to trigger server handlers.
 
+For the knowledge graph, the D3 force simulation runs in a Web Worker
+(`assets/js/hooks/graph_layout_worker.js`) so ~1000-node layouts do not block
+the main thread; `GraphHook` applies the settled positions in a single pass and
+falls back to a local simulation when Workers are unavailable. Embedding-space
+coordinates are computed server-side with a real PCA (`Nx.LinAlg.svd/1`) in
+`Rageg.Embeddings.project_2d/1`.
+
 ## Supervision Tree
 
 ```
@@ -60,6 +67,8 @@ Rageg.Supervisor (one_for_one)
   |-- DNSCluster
   |-- Phoenix.PubSub (name: Rageg.PubSub)
   |-- Rageg.TaskSupervisor (unlinked background tasks)
+  |-- Rageg.TaskRunner (registry of supervised, cancelable LiveView jobs)
+  |-- Rageg.Diagnostics (counters for errors swallowed by defensive rescues)
   |-- Rageg.Profiles (GenServer, profile CRUD + activation)
   |-- Rageg.Stats (GenServer, polls every 3s)
   |-- RagegWeb.Endpoint (Bandit HTTP + LiveView WebSocket)
@@ -68,6 +77,34 @@ Rageg.Supervisor (one_for_one)
 Profile activation runs in a `Rageg.TaskSupervisor` child and replies to the
 caller with `GenServer.reply/2`, so the `Rageg.Profiles` GenServer stays
 responsive during long ingestions.
+
+## Background Jobs
+
+Every long-running LiveView action (analysis, assessment, audit, chat, impact,
+metacredo, refactor execute/preview, MCP tool execution) goes through
+`Rageg.TaskRunner`:
+
+```elixir
+socket = Rageg.TaskRunner.start(socket, :analyze, fn -> Analyze.run(path) end)
+
+# later, as ordinary messages:
+def handle_info({:task_result, :analyze, result}, socket), do: ...
+def handle_info({:task_error, :analyze, reason}, socket), do: ...
+```
+
+Jobs are supervised by `Rageg.TaskSupervisor`, tracked per owning LiveView, and
+cancelable with `TaskRunner.cancel/1` (which replaces the old
+`Process.exit(pid, :kill)` pattern). Every job reports exactly one result or
+error message, so LiveViews never have to reason about monitors.
+
+## Error Surfacing
+
+Optional subsystems are called defensively (`rescue` → empty default) so a
+busy dllb pool or an unloaded model cannot take a page down. Those clauses now
+report through `Rageg.Diagnostics.suppressed/3`, which counts failures per
+operation, logs the first occurrence and then at most once per minute, and
+feeds the `<.degraded_banner />` in the app layout. A healthy app shows
+nothing; a degraded one says so instead of silently rendering empty tables.
 
 ## Security
 
@@ -78,8 +115,18 @@ responsive during long ingestions.
 - **Optional Basic auth**: set `RAGEG_AUTH_USER` and `RAGEG_AUTH_PASSWORD` to
   enable `RagegWeb.Plugs.BasicAuth`. Production binds to loopback by default;
   set `RAGEG_BIND_ALL=true` only behind an authenticating reverse proxy.
+- **Trusted workspace**: `Rageg.Workspace` enforces an allowlist of directories
+  the app may ingest, analyse, or refactor. Configure it with
+  `config :rageg, :allowed_roots` or `RAGEG_ALLOWED_ROOTS` (comma-separated);
+  paths are `~`-expanded, symlink-resolved and `..`-normalised before the check.
+  An empty allowlist disables the restriction (local development default).
 - **Destructive MCP tools** (`destruction_level != :none`) require an explicit
-  confirmation showing the tool name, target, and risk before execution.
+  confirmation showing the tool name, target, and risk before execution, with a
+  "dry run first" toggle (on by default) for tools that declare a boolean
+  `dry_run` argument.
+- **Refactoring** follows a preview → confirm → apply flow: Apply stays disabled
+  until a preview exists, blocking conflicts prevent confirmation, and a modal
+  lists the affected files before anything is written.
 
 ## Routing
 

@@ -221,6 +221,17 @@ A one-time setup passphrase stored hashed in `~/.rageg`, enforced by a plug,
 plus an allowlist of directories the app may ingest/refactor. This turns a
 dangerous local tool into a safely-shareable team tool.
 
+**Status: partially implemented.**
+
+- [x] Directory allowlist: `Rageg.Workspace` (configured with
+  `config :rageg, :allowed_roots` / `RAGEG_ALLOWED_ROOTS`), enforced in
+  `Rageg.Profiles.create/3`, `Rageg.Profiles.switch/2` and `Rageg.Analyze.run/2`.
+  Paths are `~`-expanded, symlink-resolved and `..`-normalised before the
+  check; an empty allowlist means "no restriction" (local default).
+- [x] Basic-auth plug (`RagegWeb.Plugs.BasicAuth`) + loopback-only prod bind.
+- [ ] One-time passphrase stored hashed in `~/.rageg` (superseded for now by
+  env-configured basic auth; revisit if per-user accounts are needed).
+
 ### B. LiveView streams everywhere
 
 Adopt LiveView streams for tables/lists (Quality, Dependencies, chat messages,
@@ -228,11 +239,30 @@ analyze progress). This reduces memory and enables efficient
 `phx-update="stream"` diffing, and aligns with the project's own `AGENTS.md`
 guidance. `MetacredoLive` already paginates manually; streams would simplify it.
 
+**Status: partially implemented.**
+
+- [x] `ChatLive`: messages and tool-call sidebar are streams
+  (`#chat-messages`, `#chat-tool-calls`), with an empty state that works via
+  `only:` variants.
+- [ ] Quality / Dependencies / analyze-progress tables.
+
 ### C. Supervised task runner
 
 Replace the ad-hoc `Task.start` + `Process.monitor` pattern used across six or
 more LiveViews with a `Task.Supervisor` in the supervision tree. Long jobs become
 cancelable, observable, and don't orphan on LiveView disconnect.
+
+**Status: implemented** (`Rageg.TaskRunner`).
+
+- [x] Every LiveView job (analyze, URL analyze, assess, audit, chat, impact,
+  metacredo, refactor execute/preview, MCP tool execution) now goes through
+  `TaskRunner.start/4`, which supervises the job, delivers
+  `{:task_result, tag, result}` / `{:task_error, tag, reason}`, and tracks jobs
+  per owner.
+- [x] `TaskRunner.cancel/1` replaces `Process.exit(pid, :kill)`; cancel
+  buttons use it.
+- [ ] Automatic cancellation on LiveView terminate (jobs are tracked per owner
+  but not yet killed on `terminate/2`).
 
 ### D. Safety gate for destructive MCP tools
 
@@ -241,24 +271,77 @@ target, and a "dry-run first" toggle for `refactor` / `edit` / `rollback` tools.
 This complements the existing `destruction_level_badge` UI, which currently
 does nothing to prevent execution.
 
-### E. Structured error surfacing
+**Status: implemented.**
 
-The pervasive `rescue _ -> []` hides *why* something failed. Add a
-`Rageg.Diagnostics` module that logs the first N suppressed errors per process
-with rate-limiting, and optionally surfaces a "degraded" banner in the UI.
+### H. CI pipeline
 
-### F. True refactor dry-run fidelity
+Add a GitHub Actions workflow running
+`mix rageg.ci --base origin/$GITHUB_BASE_REF --format github`. The
+`Mix.Tasks.Rageg.Ci` task already exists and is purpose-built for this.
 
-Remove the hardcoded `:Dummy` module used by `Rageg.Refactor` previews for
-`change_signature` and `inline_function`, and add a
-"show diff → confirm → apply" workflow instead of independent Apply/Preview
+**Status: implemented** (`.github/workflows/ci.yml`).
+
+- [x] `test` job: deps cache, `mix compile --warnings-as-errors`,
+  `mix format --check-formatted`, `mix credo --strict`, `mix test`.
+- [x] `quality-gate` job (pull requests only):
+  `mix rageg.ci --base origin/${{ github.base_ref }} --format github`.
+
+### I. Custom error pages + error reporting
+
+Add custom 404/500 pages and a real error-reporting backend (Sentry or
+LoggerJSON) instead of relying on silent rescues.
+
+**Status: partially implemented.**
+
+- [x] Styled, chrome-free 404/500/other error pages in
+  `RagegWeb.ErrorHTML` (with a link back to the dashboard and a generic
+  fallback for unhandled statuses).
+- [x] `Rageg.Diagnostics` makes silent rescues observable (counted,
+  rate-limited logging, UI banner).
+- [ ] External error reporting backend (Sentry / LoggerJSON).
+
+### J. Property-based tests
+
+Use StreamData for pure functions like `Rageg.Graph.prettify_id/1` and
+`Rageg.Impact.parse_node_ref/1` (round-trip and format-stability properties),
+which are currently covered only by hand-written cases.
+
+**Status: implemented.**
+
+- [x] `stream_data` added as a test-only dependency.
+- [x] `test/rageg/graph_property_test.exs`: idempotence and format stability
+  of `prettify_id/1`, tuple round-trips, and "never raises on arbitrary
+  input".
+- [x] `test/rageg/impact_property_test.exs`: `parse_node_ref/1` ⇄
+  `format_ref/1` round-trips for function and module refs, idempotence, and
+  the "unknown atoms are rejected, never created" guarantee.
+- [x] `Rageg.Impact.parse_node_ref/1` and `format_ref/1` are now public (they
+  were private) so they can be exercised directly.
 buttons.
+
+**Status: partially implemented.**
+
+- [x] "Preview → confirm → apply" workflow: Apply is disabled until a preview
+  exists, blocking conflicts prevent confirmation, and a confirmation modal
+  lists the files and +/- counts before anything is written.
+- [ ] The `:Dummy` module is still used for `change_signature` and
+  `inline_function` previews (needs a fix in Ragex's `Refactor.Elixir` API).
 
 ### G. Real PCA via Nx + web-worker graph layout
 
 Replace the hand-rolled PCA in `Rageg.Embeddings.project_2d/1` with a proper
 `Nx.LinAlg` SVD/eigh (Nx/EXLA are already dependencies). Move D3 force-simulation
 layout to a web worker to keep the browser main thread smooth at 1000 nodes.
+
+**Status: implemented.**
+
+- [x] `Rageg.Embeddings.project_2d/1` now mean-centres the data and projects it
+  onto the first two right singular vectors from `Nx.LinAlg.svd/1`, with a
+  graceful fallback for degenerate input.
+- [x] `assets/js/hooks/graph_layout_worker.js` runs the force simulation off
+  the main thread (300 synchronous ticks) and posts back settled positions;
+  `GraphHook` applies them in one pass and falls back to a local simulation
+  when Workers are unavailable.
 
 ### H. CI pipeline
 
@@ -270,6 +353,10 @@ Add a GitHub Actions workflow running
 
 Add custom 404/500 pages and a real error-reporting backend (Sentry or
 LoggerJSON) instead of relying on silent rescues.
+
+**Status: partially implemented** -- `Rageg.Diagnostics` now makes silent
+rescues observable (counted, rate-limited logging, UI banner); a dedicated
+404/500 page and an external reporting backend are still open.
 
 ### J. Property-based tests
 

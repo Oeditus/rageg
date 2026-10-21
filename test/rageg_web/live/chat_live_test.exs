@@ -33,5 +33,20 @@ defmodule RagegWeb.ChatLiveTest do
       # No session, should not crash (unless returns error message)
       assert html =~ "RAG Chat"
     end
+
+    test "messages area is a LiveView stream", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      assert has_element?(view, "#chat-messages[phx-update=stream]")
+    end
+
+    test "new_session clears the message stream", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      # Session creation depends on a configured provider; either it succeeds
+      # (and the form appears) or it reports an error -- both must not crash.
+      render_click(view, "new_session", %{})
+      assert has_element?(view, "#chat-messages")
+    end
   end
 end

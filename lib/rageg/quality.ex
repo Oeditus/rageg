@@ -60,7 +60,7 @@ defmodule Rageg.Quality do
         {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:quality_smells, e, {:ok, []})
   end
 
   @doc """
@@ -88,7 +88,7 @@ defmodule Rageg.Quality do
         {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:quality_security, e, {:ok, []})
   end
 
   @doc """
@@ -104,7 +104,7 @@ defmodule Rageg.Quality do
       _ -> {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:quality_dead_code, e, {:ok, []})
   end
 
   @doc """
@@ -120,7 +120,7 @@ defmodule Rageg.Quality do
       _ -> {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:quality_duplication, e, {:ok, []})
   end
 
   @doc """
@@ -137,7 +137,7 @@ defmodule Rageg.Quality do
       _ -> {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:quality_complexity, e, {:ok, []})
   end
 
   @doc """
@@ -164,7 +164,7 @@ defmodule Rageg.Quality do
         {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:quality_business_logic, e, {:ok, []})
   end
 
   @doc "Returns summary counts for all quality dimensions."
@@ -186,7 +186,7 @@ defmodule Rageg.Quality do
       _ -> 0
     end
   rescue
-    _ -> 0
+    e -> Rageg.Diagnostics.suppressed(:quality_summary, e, 0)
   end
 
   defp severity_order(:critical), do: 0

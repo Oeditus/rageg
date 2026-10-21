@@ -45,7 +45,7 @@ defmodule Rageg.MCP do
     |> Enum.map(&normalize_tool_schema/1)
     |> Enum.uniq_by(fn t -> t[:name] || t["name"] end)
   rescue
-    _ -> []
+    e -> Rageg.Diagnostics.suppressed(:mcp_list_tools, e, [])
   end
 
   # Normalize every tool to a single canonical shape so UI consumers can rely
@@ -171,7 +171,7 @@ defmodule Rageg.MCP do
   def socket_path do
     MCPSocketPath.compute_string()
   rescue
-    _ -> "/tmp/ragex_mcp.sock"
+    e -> Rageg.Diagnostics.suppressed(:mcp_socket_path, e, "/tmp/ragex_mcp.sock")
   end
 
   @doc """

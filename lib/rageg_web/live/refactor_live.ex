@@ -12,6 +12,7 @@ defmodule RagegWeb.RefactorLive do
   use RagegWeb, :live_view
 
   alias Rageg.Refactor
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -24,7 +25,9 @@ defmodule RagegWeb.RefactorLive do
      |> assign(executing: false)
      |> assign(previewing: false)
      |> assign(preview_result: nil)
+     |> assign(confirming: false)
      |> assign(result: nil)
+     |> assign(job_tag: nil)
      |> assign(error: nil)}
   end
 
@@ -67,27 +70,53 @@ defmodule RagegWeb.RefactorLive do
   def handle_event("execute", _params, socket) do
     op = socket.assigns.selected_op
     params = socket.assigns.params
-    pid = self()
 
-    Task.start(fn ->
-      result = Refactor.execute(op, params, [])
-      send(pid, {:refactor_result, result})
-    end)
+    socket =
+      TaskRunner.start(socket, :refactor_execute, fn -> Refactor.execute(op, params, []) end)
 
-    {:noreply, assign(socket, executing: true, error: nil, result: nil, preview_result: nil)}
+    {:noreply,
+     assign(socket,
+       executing: true,
+       confirming: false,
+       error: nil,
+       result: nil,
+       preview_result: nil
+     )}
   end
 
   def handle_event("preview", _params, socket) do
     op = socket.assigns.selected_op
     params = socket.assigns.params
-    pid = self()
 
-    Task.start(fn ->
-      result = Refactor.preview(op, params, [])
-      send(pid, {:preview_result, result})
-    end)
+    socket =
+      TaskRunner.start(socket, :refactor_preview, fn -> Refactor.preview(op, params, []) end)
 
     {:noreply, assign(socket, previewing: true, error: nil, preview_result: nil)}
+  end
+
+  # "Show diff -> confirm -> apply" workflow: the preview is the confirmation
+  # step, so applying from a clean conflict analysis requires one extra click.
+  def handle_event("request_apply", _params, socket) do
+    case socket.assigns.preview_result do
+      nil ->
+        {:noreply, assign(socket, error: gettext("Generate a preview before applying"))}
+
+      %{conflicts: %{stats: %{errors: errors}}} when errors > 0 ->
+        {:noreply,
+         assign(socket,
+           error:
+             gettext("Resolve the %{count} blocking conflict(s) before applying",
+               count: errors
+             )
+         )}
+
+      _ ->
+        {:noreply, assign(socket, confirming: true, error: nil)}
+    end
+  end
+
+  def handle_event("cancel_apply", _params, socket) do
+    {:noreply, assign(socket, confirming: false)}
   end
 
   def handle_event("undo", _params, socket) do
@@ -107,20 +136,31 @@ defmodule RagegWeb.RefactorLive do
     {:noreply, socket}
   end
 
-  def handle_info({:refactor_result, {:ok, result}}, socket) do
-    {:noreply, assign(socket, executing: false, result: {:ok, result})}
+  def handle_info({:task_result, :refactor_execute, {:ok, result}}, socket) do
+    {:noreply, assign(socket, executing: false, job_tag: nil, result: {:ok, result})}
   end
 
-  def handle_info({:refactor_result, {:error, reason}}, socket) do
-    {:noreply, assign(socket, executing: false, error: to_string(reason))}
+  def handle_info({:task_result, :refactor_execute, {:error, reason}}, socket) do
+    {:noreply, assign(socket, executing: false, job_tag: nil, error: to_string(reason))}
   end
 
-  def handle_info({:preview_result, {:ok, result}}, socket) do
-    {:noreply, assign(socket, previewing: false, preview_result: result)}
+  def handle_info({:task_result, :refactor_preview, {:ok, result}}, socket) do
+    {:noreply, assign(socket, previewing: false, job_tag: nil, preview_result: result)}
   end
 
-  def handle_info({:preview_result, {:error, reason}}, socket) do
-    {:noreply, assign(socket, previewing: false, error: to_string(reason))}
+  def handle_info({:task_result, :refactor_preview, {:error, reason}}, socket) do
+    {:noreply, assign(socket, previewing: false, job_tag: nil, error: to_string(reason))}
+  end
+
+  def handle_info({:task_error, tag, reason}, socket)
+      when tag in [:refactor_execute, :refactor_preview] do
+    {:noreply,
+     assign(socket,
+       executing: false,
+       previewing: false,
+       job_tag: nil,
+       error: gettext("Refactoring failed: %{reason}", reason: inspect(reason))
+     )}
   end
 
   @impl Phoenix.LiveView
@@ -181,7 +221,7 @@ defmodule RagegWeb.RefactorLive do
               <h2 class="text-lg font-bold">{op_label(@selected_op)}</h2>
             </div>
 
-            <form phx-change="update_params" phx-submit="execute" class="space-y-4">
+            <form phx-change="update_params" phx-submit="preview" class="space-y-4">
               <div
                 :for={{field, label, type} <- Refactor.operation_fields(@selected_op)}
                 class="form-control"
@@ -200,17 +240,9 @@ defmodule RagegWeb.RefactorLive do
 
               <div class="flex flex-wrap gap-2 mt-6">
                 <button
-                  type="submit"
-                  class="btn btn-primary gap-2"
-                  disabled={@executing or @previewing}
-                >
-                  <span :if={@executing} class="loading loading-spinner loading-sm"></span>
-                  <.icon :if={!@executing} name="hero-play" class="size-5" />
-                  {if @executing, do: gettext("Executing..."), else: gettext("Apply")}
-                </button>
-                <button
+                  id="refactor-preview-btn"
                   type="button"
-                  class="btn btn-secondary gap-2"
+                  class="btn btn-primary gap-2"
                   disabled={@executing or @previewing}
                   phx-click="preview"
                 >
@@ -218,11 +250,69 @@ defmodule RagegWeb.RefactorLive do
                   <.icon :if={!@previewing} name="hero-eye" class="size-5" />
                   {if @previewing, do: gettext("Simulating..."), else: gettext("Preview Changes")}
                 </button>
+                <button
+                  id="refactor-apply-btn"
+                  type="button"
+                  class="btn btn-secondary gap-2"
+                  disabled={@executing or @previewing or is_nil(@preview_result)}
+                  phx-click="request_apply"
+                  title={gettext("Preview the change first, then confirm")}
+                >
+                  <span :if={@executing} class="loading loading-spinner loading-sm"></span>
+                  <.icon :if={!@executing} name="hero-check" class="size-5" />
+                  {if @executing, do: gettext("Applying..."), else: gettext("Apply Changes")}
+                </button>
                 <button type="button" class="btn btn-ghost" phx-click="back_to_picker">
                   {gettext("Cancel")}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+
+        <%!-- Apply confirmation (after a clean preview) --%>
+        <div
+          :if={@confirming}
+          id="refactor-confirm-overlay"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        >
+          <div class="bg-base-100 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 space-y-4">
+            <h3 class="text-lg font-bold flex items-center gap-2">
+              <.icon name="hero-exclamation-triangle" class="size-5 text-warning" />
+              {gettext("Apply this refactoring?")}
+            </h3>
+            <p class="text-sm text-base-content/70">
+              {gettext(
+                "This will rewrite %{files} file(s) on disk. Use Undo if the result is not what you expected.",
+                files: length(@preview_result.diffs)
+              )}
+            </p>
+            <div class="bg-base-200 rounded-lg p-3 text-xs font-mono space-y-1 max-h-40 overflow-y-auto">
+              <div :for={diff <- @preview_result.diffs} class="flex justify-between gap-2">
+                <span class="truncate">{diff.file}</span>
+                <span class="shrink-0">
+                  <span class="text-success">+{diff.additions}</span>
+                  <span class="text-error">-{diff.deletions}</span>
+                </span>
+              </div>
+            </div>
+            <div class="flex justify-end gap-3">
+              <button
+                id="refactor-confirm-cancel"
+                phx-click="cancel_apply"
+                class="btn btn-ghost btn-sm"
+              >
+                {gettext("Cancel")}
+              </button>
+              <button
+                id="refactor-confirm-run"
+                phx-click="execute"
+                class="btn btn-error btn-sm gap-1"
+              >
+                <.icon name="hero-check" class="size-4" />
+                {gettext("Yes, apply")}
+              </button>
+            </div>
           </div>
         </div>
 

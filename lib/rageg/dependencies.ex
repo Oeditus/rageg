@@ -43,7 +43,7 @@ defmodule Rageg.Dependencies do
         {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:dependencies_coupling, e, {:ok, []})
   end
 
   @doc """
@@ -66,7 +66,7 @@ defmodule Rageg.Dependencies do
         {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:dependencies_cycles, e, {:ok, []})
   end
 
   @doc """
@@ -95,7 +95,7 @@ defmodule Rageg.Dependencies do
         {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:dependencies_god_modules, e, {:ok, []})
   end
 
   @doc """
@@ -110,7 +110,7 @@ defmodule Rageg.Dependencies do
       {:error, _} -> {:ok, []}
     end
   rescue
-    _ -> {:ok, []}
+    e -> Rageg.Diagnostics.suppressed(:dependencies_unused, e, {:ok, []})
   end
 
   @doc """
@@ -153,6 +153,6 @@ defmodule Rageg.Dependencies do
       _ -> []
     end
   rescue
-    _ -> []
+    e -> Rageg.Diagnostics.suppressed(:dependencies_summary, e, [])
   end
 end

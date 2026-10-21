@@ -76,6 +76,14 @@ defmodule Rageg.Analyze do
     analyses = Keyword.get(opts, :analyses, default_analyses())
     on_progress = Keyword.get(opts, :on_progress, fn _ -> :ok end)
 
+    if Rageg.Workspace.allowed?(path) do
+      run_pipeline(path, analyses, on_progress)
+    else
+      {:error, Rageg.Workspace.rejection_message(path)}
+    end
+  end
+
+  defp run_pipeline(path, analyses, on_progress) do
     # Restore cached graph, embeddings and file-tracker for this project
     # so the incremental mode in Directory.analyze_directory can skip
     # unchanged files.

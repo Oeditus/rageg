@@ -56,6 +56,65 @@ defmodule RagegWeb.McpLiveTest do
     end
   end
 
+  describe "destructive tool confirmation" do
+    test "read-only tools run without a confirmation step", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/mcp")
+
+      render_click(view, "select_tool", %{"name" => "list_nodes"})
+      render_click(view, "execute_tool", %{})
+
+      refute has_element?(view, "#mcp-confirm-overlay")
+    end
+
+    test "a pending confirmation can be cancelled", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/mcp")
+
+      # Pretend the selected tool is destructive and ask to execute it.
+      destructive = %{
+        name: "refactor_demo",
+        description: "demo",
+        inputSchema: %{"type" => "object", "properties" => %{}},
+        destruction_level: :full
+      }
+
+      :sys.replace_state(view.pid, fn %{socket: socket} = state ->
+        Map.put(state, :socket, Phoenix.Component.assign(socket, :selected_tool, destructive))
+      end)
+
+      html = render_click(view, "execute_tool", %{})
+      assert html =~ "Confirm destructive tool"
+      assert has_element?(view, "#mcp-confirm-run")
+
+      html = render_click(view, "cancel_execute", %{})
+      refute html =~ "Confirm destructive tool"
+    end
+
+    test "offers a dry-run toggle only when the tool declares dry_run", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/mcp")
+
+      with_dry_run = %{
+        name: "edit_demo",
+        description: "demo",
+        inputSchema: %{
+          "type" => "object",
+          "properties" => %{"dry_run" => %{"type" => "boolean"}}
+        },
+        destruction_level: :high
+      }
+
+      :sys.replace_state(view.pid, fn %{socket: socket} = state ->
+        Map.put(state, :socket, Phoenix.Component.assign(socket, :selected_tool, with_dry_run))
+      end)
+
+      html = render_click(view, "execute_tool", %{})
+      assert has_element?(view, "#mcp-dry-run-toggle")
+      assert html =~ "Run dry run"
+
+      html = render_click(view, "toggle_dry_run", %{})
+      assert html =~ "Execute anyway"
+    end
+  end
+
   # Renders the view repeatedly until the async tool result appears, or until
   # `deadline` is reached (defaults to a generous 5s). Returns the final html.
   defp wait_for_result(view, deadline \\ System.monotonic_time(:millisecond) + 5_000) do

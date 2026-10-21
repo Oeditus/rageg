@@ -26,6 +26,7 @@
 
     <%!-- Page content --%>
     <main class="flex-1 p-4 lg:p-6">
+      <.degraded_banner />
       <%= if assigns[:active_profile] || assigns[:current_path] == "/configuration" do %>
         {if assigns[:inner_block], do: render_slot(@inner_block), else: @inner_content}
       <% else %>

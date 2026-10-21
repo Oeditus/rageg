@@ -16,6 +16,7 @@ defmodule RagegWeb.McpLive do
 
   alias Rageg.MCP
   alias Rageg.Plugins
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -53,6 +54,7 @@ defmodule RagegWeb.McpLive do
      |> assign(json_input: json_input)
      |> assign(json_error: nil)
      |> assign(running: false)
+     |> assign(job_tag: nil)
      |> assign(result: nil)
      |> assign(error: nil)
      |> assign(pending_confirmation: nil)}
@@ -168,6 +170,8 @@ defmodule RagegWeb.McpLive do
 
       true ->
         # Destructive tools require explicit confirmation showing name/target/risk.
+        # `dry_run` is pre-selected when the tool exposes a `dry_run` argument,
+        # so the safe path is the default one.
         {:noreply,
          assign(socket,
            pending_confirmation: %{
@@ -175,15 +179,31 @@ defmodule RagegWeb.McpLive do
              args: args,
              name: tool.name,
              level: destruction_level(tool),
-             target: socket.assigns.project_path
+             target: socket.assigns.project_path,
+             dry_run: true,
+             dry_run_supported: supports_dry_run?(tool)
            }
+         )}
+    end
+  end
+
+  def handle_event("toggle_dry_run", _params, socket) do
+    case socket.assigns.pending_confirmation do
+      nil ->
+        {:noreply, socket}
+
+      confirmation ->
+        {:noreply,
+         assign(socket,
+           pending_confirmation: %{confirmation | dry_run: !confirmation.dry_run}
          )}
     end
   end
 
   def handle_event("confirm_execute", _params, socket) do
     case socket.assigns.pending_confirmation do
-      %{tool: tool, args: args} ->
+      %{tool: tool, args: args} = confirmation ->
+        args = apply_dry_run(args, confirmation)
         {:noreply, run_tool(assign(socket, pending_confirmation: nil), tool, args)}
 
       _ ->
@@ -213,17 +233,24 @@ defmodule RagegWeb.McpLive do
      |> assign(project_path: path, form_args: form_args, json_input: json_input)}
   end
 
-  def handle_info({:tool_executed, {:ok, res}}, socket) do
-    {:noreply, assign(socket, running: false, result: res, error: nil)}
+  def handle_info({:task_result, :mcp_tool, {:ok, res}}, socket) do
+    {:noreply, assign(socket, running: false, job_tag: nil, result: res, error: nil)}
   end
 
-  def handle_info({:tool_executed, {:error, reason}}, socket) do
-    {:noreply, assign(socket, running: false, error: to_string(reason))}
+  def handle_info({:task_result, :mcp_tool, {:error, reason}}, socket) do
+    {:noreply, assign(socket, running: false, job_tag: nil, error: to_string(reason))}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket) do
-    {:noreply, assign(socket, running: false)}
+  def handle_info({:task_error, :mcp_tool, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       running: false,
+       job_tag: nil,
+       error: gettext("Tool execution failed: %{reason}", reason: inspect(reason))
+     )}
   end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl Phoenix.LiveView
   def render(assigns) do
@@ -263,6 +290,29 @@ defmodule RagegWeb.McpLive do
                 {@pending_confirmation.level}
               </div>
             </div>
+
+            <%!-- Dry-run toggle: forces the tool's own dry_run flag when supported --%>
+            <label
+              :if={@pending_confirmation.dry_run_supported}
+              id="mcp-dry-run-toggle"
+              class="flex items-start gap-3 p-3 rounded-lg bg-base-200 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                checked={@pending_confirmation.dry_run}
+                phx-click="toggle_dry_run"
+              />
+              <span class="text-xs">
+                <span class="font-semibold block">{gettext("Dry run first")}</span>
+                <span class="text-base-content/60">
+                  {gettext(
+                    "Pass dry_run: true so the tool reports what it would change without writing."
+                  )}
+                </span>
+              </span>
+            </label>
+
             <div class="flex justify-end gap-3">
               <button
                 id="mcp-confirm-cancel"
@@ -277,7 +327,9 @@ defmodule RagegWeb.McpLive do
                 class="btn btn-error btn-sm gap-1"
               >
                 <.icon name="hero-play" class="size-4" />
-                {gettext("Execute anyway")}
+                {if @pending_confirmation.dry_run and @pending_confirmation.dry_run_supported,
+                  do: gettext("Run dry run"),
+                  else: gettext("Execute anyway")}
               </button>
             </div>
           </div>
@@ -781,6 +833,22 @@ defmodule RagegWeb.McpLive do
 
   defp destruction_level(_), do: :none
 
+  # A tool supports a dry run when its schema declares a boolean `dry_run`
+  # argument. We only toggle a declared argument so we never send an unknown
+  # parameter to a tool that would reject it.
+  defp supports_dry_run?(tool) do
+    case Map.get(get_schema_properties(tool), "dry_run") do
+      %{"type" => "boolean"} -> true
+      %{type: "boolean"} -> true
+      _ -> false
+    end
+  end
+
+  defp apply_dry_run(args, %{dry_run: true, dry_run_supported: true}),
+    do: Map.put(args, "dry_run", true)
+
+  defp apply_dry_run(args, _confirmation), do: args
+
   defp resolve_args(socket) do
     if socket.assigns.mode == :json do
       case Jason.decode(socket.assigns.json_input) do
@@ -793,24 +861,10 @@ defmodule RagegWeb.McpLive do
   end
 
   defp run_tool(socket, tool, args) do
-    pid = self()
     tool_name = tool.name
 
-    start = fn fun ->
-      if Process.whereis(Rageg.TaskSupervisor) do
-        Task.Supervisor.start_child(Rageg.TaskSupervisor, fun)
-      else
-        Task.start(fun)
-      end
-    end
-
-    {:ok, task_pid} =
-      start.(fn ->
-        res = MCP.call_tool(tool_name, args)
-        send(pid, {:tool_executed, res})
-      end)
-
-    Process.monitor(task_pid)
+    socket =
+      TaskRunner.start(socket, :mcp_tool, fn -> MCP.call_tool(tool_name, args) end)
 
     assign(socket, running: true, error: nil, result: nil)
   end

@@ -11,6 +11,7 @@ defmodule RagegWeb.AssessLive do
   use RagegWeb, :live_view
 
   alias Rageg.Assess
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -52,7 +53,7 @@ defmodule RagegWeb.AssessLive do
      |> assign(base_ref: "origin/main")
      |> assign(format: "markdown")
      |> assign(running: false)
-     |> assign(task_pid: nil)
+     |> assign(job_tag: nil)
      |> assign(progress: [])
      |> assign(report: nil)
      |> assign(result: nil)
@@ -121,28 +122,19 @@ defmodule RagegWeb.AssessLive do
         {:noreply, assign(socket, error: gettext("Select a branch to assess."))}
 
       true ->
-        pid = self()
-
-        {:ok, task_pid} =
-          Task.start(fn ->
-            result =
-              Assess.run(path,
-                base: base,
-                head: head,
-                format: format,
-                on_progress: fn msg -> send(pid, {:progress, msg}) end
-              )
-
-            send(pid, {:assess_complete, result})
+        socket =
+          TaskRunner.start(socket, :assess, fn ->
+            Assess.run(path,
+              base: base,
+              head: head,
+              format: format,
+              on_progress: fn msg -> send(self(), {:progress, msg}) end
+            )
           end)
-
-        ref = Process.monitor(task_pid)
 
         {:noreply,
          assign(socket,
            running: true,
-           task_pid: task_pid,
-           task_ref: ref,
            error: nil,
            report: nil,
            result: nil,
@@ -152,12 +144,10 @@ defmodule RagegWeb.AssessLive do
   end
 
   def handle_event("cancel_assessment", _params, socket) do
-    if pid = socket.assigns.task_pid do
-      Process.exit(pid, :kill)
-    end
+    if tag = socket.assigns.job_tag, do: TaskRunner.cancel(tag)
 
-    progress = socket.assigns.progress ++ ["Assessment cancelled by user"]
-    {:noreply, assign(socket, running: false, task_pid: nil, progress: progress)}
+    progress = socket.assigns.progress ++ [gettext("Assessment cancelled by user")]
+    {:noreply, assign(socket, running: false, job_tag: nil, progress: progress)}
   end
 
   @impl Phoenix.LiveView
@@ -193,36 +183,28 @@ defmodule RagegWeb.AssessLive do
     {:noreply, assign(socket, progress: progress)}
   end
 
-  def handle_info({:assess_complete, {:ok, result}}, socket) do
+  def handle_info({:task_result, :assess, {:ok, result}}, socket) do
     {:noreply,
      socket
      |> assign(
        running: false,
-       task_pid: nil,
+       job_tag: nil,
        report: result.report,
        result: result,
        error: nil
      )}
   end
 
-  def handle_info({:assess_complete, {:error, reason}}, socket) do
-    {:noreply, assign(socket, running: false, task_pid: nil, error: to_string(reason))}
+  def handle_info({:task_result, :assess, {:error, reason}}, socket) do
+    {:noreply, assign(socket, running: false, job_tag: nil, error: to_string(reason))}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, :normal}, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:DOWN, _ref, :process, _pid, :killed}, socket) do
-    {:noreply, assign(socket, running: false, task_pid: nil)}
-  end
-
-  def handle_info({:DOWN, _ref, :process, _pid, reason}, socket) do
+  def handle_info({:task_error, :assess, reason}, socket) do
     {:noreply,
      assign(socket,
        running: false,
-       task_pid: nil,
-       error: "Assessment process crashed: #{inspect(reason)}"
+       job_tag: nil,
+       error: gettext("Assessment process crashed: %{reason}", reason: inspect(reason))
      )}
   end
 

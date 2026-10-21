@@ -14,6 +14,7 @@ defmodule RagegWeb.ChatLive do
   use RagegWeb, :live_view
 
   alias Rageg.Chat
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -22,14 +23,16 @@ defmodule RagegWeb.ChatLive do
      |> assign(page_title: gettext("RAG Chat"))
      |> assign(current_path: "/chat")
      |> assign(session_id: nil)
-     |> assign(messages: [])
      |> assign(input: "")
      |> assign(sending: false)
      |> assign(streaming_content: "")
-     |> assign(tool_calls: [])
+     |> assign(tool_call_count: 0)
      |> assign(provider: :deepseek_r1)
      |> assign(show_tools: false)
-     |> assign(error: nil)}
+     |> assign(job_tag: nil)
+     |> assign(error: nil)
+     |> stream(:messages, [])
+     |> stream(:tool_calls, [])}
   end
 
   @impl Phoenix.LiveView
@@ -37,7 +40,10 @@ defmodule RagegWeb.ChatLive do
     case Chat.new_session(provider: socket.assigns.provider) do
       {:ok, session_id} ->
         {:noreply,
-         assign(socket, session_id: session_id, messages: [], tool_calls: [], error: nil)}
+         socket
+         |> assign(session_id: session_id, tool_call_count: 0, error: nil)
+         |> stream(:messages, [], reset: true)
+         |> stream(:tool_calls, [], reset: true)}
 
       {:error, reason} ->
         {:noreply, assign(socket, error: to_string(reason))}
@@ -46,7 +52,12 @@ defmodule RagegWeb.ChatLive do
 
   def handle_event("end_session", _params, socket) do
     if socket.assigns.session_id, do: Chat.end_session(socket.assigns.session_id)
-    {:noreply, assign(socket, session_id: nil, messages: [], tool_calls: [])}
+
+    {:noreply,
+     socket
+     |> assign(session_id: nil, tool_call_count: 0)
+     |> stream(:messages, [], reset: true)
+     |> stream(:tool_calls, [], reset: true)}
   end
 
   def handle_event("send_message", %{"message" => message}, socket) when message != "" do
@@ -55,30 +66,22 @@ defmodule RagegWeb.ChatLive do
     unless session_id do
       {:noreply, assign(socket, error: gettext("Start a session first"))}
     else
-      # Add user message to UI immediately
-      user_msg = %{role: :user, content: message, timestamp: DateTime.utc_now()}
-      messages = socket.assigns.messages ++ [user_msg]
-      pid = self()
+      user_msg = %{id: new_message_id(), role: :user, content: message}
+      provider = socket.assigns.provider
 
-      # Start async task for AI response
-      Task.start(fn ->
-        result =
+      socket =
+        TaskRunner.start(socket, :chat, fn ->
           Chat.send_message(session_id, message,
-            provider: socket.assigns.provider,
-            on_chunk: fn chunk ->
-              send(pid, {:stream_chunk, chunk})
-            end,
-            on_tool_progress: fn tool_info ->
-              send(pid, {:tool_progress, tool_info})
-            end
+            provider: provider,
+            on_chunk: fn chunk -> send(self(), {:stream_chunk, chunk}) end,
+            on_tool_progress: fn tool_info -> send(self(), {:tool_progress, tool_info}) end
           )
-
-        send(pid, {:chat_response, result})
-      end)
+        end)
 
       {:noreply,
        socket
-       |> assign(messages: messages, input: "", sending: true, streaming_content: "")}
+       |> assign(input: "", sending: true, streaming_content: "")
+       |> stream_insert(:messages, user_msg)}
     end
   end
 
@@ -114,23 +117,42 @@ defmodule RagegWeb.ChatLive do
   end
 
   def handle_info({:tool_progress, tool_info}, socket) do
-    tool_calls = socket.assigns.tool_calls ++ [tool_info]
-    {:noreply, assign(socket, tool_calls: tool_calls)}
-  end
-
-  def handle_info({:chat_response, {:ok, result}}, socket) do
-    content = result.content || socket.assigns.streaming_content
-    assistant_msg = %{role: :assistant, content: content, timestamp: DateTime.utc_now()}
-    messages = socket.assigns.messages ++ [assistant_msg]
+    entry = %{
+      id: new_message_id(),
+      name: tool_info[:name] || tool_info["name"] || "tool",
+      arguments: tool_info[:arguments] || tool_info["arguments"]
+    }
 
     {:noreply,
      socket
-     |> assign(messages: messages, sending: false, streaming_content: "", error: nil)}
+     |> stream_insert(:tool_calls, entry)
+     |> assign(tool_call_count: socket.assigns.tool_call_count + 1)}
   end
 
-  def handle_info({:chat_response, {:error, reason}}, socket) do
-    {:noreply, assign(socket, sending: false, error: to_string(reason))}
+  def handle_info({:task_result, :chat, {:ok, result}}, socket) do
+    content = result.content || socket.assigns.streaming_content
+    assistant_msg = %{id: new_message_id(), role: :assistant, content: content}
+
+    {:noreply,
+     socket
+     |> assign(sending: false, streaming_content: "", job_tag: nil, error: nil)
+     |> stream_insert(:messages, assistant_msg)}
   end
+
+  def handle_info({:task_result, :chat, {:error, reason}}, socket) do
+    {:noreply, assign(socket, sending: false, job_tag: nil, error: to_string(reason))}
+  end
+
+  def handle_info({:task_error, :chat, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       sending: false,
+       job_tag: nil,
+       error: gettext("Chat request failed: %{reason}", reason: inspect(reason))
+     )}
+  end
+
+  defp new_message_id, do: System.unique_integer([:positive, :monotonic])
 
   @impl Phoenix.LiveView
   def render(assigns) do
@@ -163,7 +185,7 @@ defmodule RagegWeb.ChatLive do
           phx-click="toggle_tools"
         >
           <.icon name="hero-wrench-screwdriver" class="size-4" />
-          {gettext("Tools")} ({length(@tool_calls)})
+          {gettext("Tools")} ({@tool_call_count})
         </button>
 
         <%!-- Session controls --%>
@@ -185,11 +207,15 @@ defmodule RagegWeb.ChatLive do
       <div class="flex flex-1 min-h-0 mt-3 gap-3">
         <%!-- Chat messages --%>
         <div class="flex-1 flex flex-col min-h-0">
-          <%!-- Messages area --%>
-          <div id="chat-messages" class="flex-1 overflow-y-auto space-y-3 pr-2" phx-update="replace">
+          <%!-- Messages area (LiveView stream) --%>
+          <div
+            id="chat-messages"
+            class="flex-1 overflow-y-auto space-y-3 pr-2"
+            phx-update="stream"
+          >
             <div
-              :if={@messages == [] and !@session_id}
-              class="flex items-center justify-center h-full"
+              id="chat-empty-state"
+              class="hidden only:flex items-center justify-center h-full"
             >
               <div class="text-center text-base-content/40">
                 <.icon name="hero-chat-bubble-left-right" class="size-16 mx-auto mb-3" />
@@ -198,15 +224,7 @@ defmodule RagegWeb.ChatLive do
               </div>
             </div>
 
-            <div :if={@messages == [] and @session_id} class="flex items-center justify-center h-full">
-              <div class="text-center text-base-content/40">
-                <.icon name="hero-sparkles" class="size-12 mx-auto mb-2" />
-                <p>{gettext("Session ready. Ask a question!")}</p>
-              </div>
-            </div>
-
-            <.message_bubble :for={msg <- @messages} message={msg} />
-
+            <.message_bubble :for={{dom_id, msg} <- @streams.messages} dom_id={dom_id} message={msg} />
             <%!-- Streaming indicator --%>
             <div :if={@sending and @streaming_content != ""} class="chat chat-start">
               <div class="chat-bubble chat-bubble-primary whitespace-pre-wrap text-sm">
@@ -247,22 +265,27 @@ defmodule RagegWeb.ChatLive do
 
         <%!-- Tool calls sidebar --%>
         <div
-          :if={@show_tools and @tool_calls != []}
+          :if={@show_tools and @tool_call_count > 0}
           class="w-72 shrink-0 overflow-y-auto rounded-box bg-base-200 border border-base-300 p-3 space-y-2"
         >
           <h3 class="text-xs font-bold uppercase tracking-wider text-base-content/60">
             {gettext("Tool Calls")}
           </h3>
-          <div
-            :for={{tool, idx} <- Enum.with_index(@tool_calls, 1)}
-            class="text-xs bg-base-100 rounded-box p-2 space-y-1"
-          >
-            <div class="flex items-center gap-1">
-              <span class="badge badge-xs badge-primary">{idx}</span>
-              <span class="font-mono font-semibold">{tool[:name] || tool["name"] || "tool"}</span>
-            </div>
-            <div :if={tool[:arguments] || tool["arguments"]} class="text-base-content/50 truncate">
-              {inspect(tool[:arguments] || tool["arguments"])}
+          <div id="chat-tool-calls" phx-update="stream">
+            <div
+              :for={{dom_id, tool} <- @streams.tool_calls}
+              id={dom_id}
+              class="text-xs bg-base-100 rounded-box p-2 space-y-1 mb-2"
+            >
+              <div class="flex items-center gap-1">
+                <span class="badge badge-xs badge-primary">
+                  <.icon name="hero-wrench-screwdriver" class="size-2.5" />
+                </span>
+                <span class="font-mono font-semibold">{tool.name}</span>
+              </div>
+              <div :if={tool.arguments} class="text-base-content/50 truncate">
+                {inspect(tool.arguments)}
+              </div>
             </div>
           </div>
         </div>
@@ -273,11 +296,12 @@ defmodule RagegWeb.ChatLive do
 
   # -- Components --
 
+  attr :dom_id, :string, required: true
   attr :message, :map, required: true
 
   defp message_bubble(%{message: %{role: :user}} = assigns) do
     ~H"""
-    <div class="chat chat-end">
+    <div id={@dom_id} class="chat chat-end">
       <div class="chat-bubble whitespace-pre-wrap text-sm">{@message.content}</div>
     </div>
     """
@@ -285,7 +309,7 @@ defmodule RagegWeb.ChatLive do
 
   defp message_bubble(%{message: %{role: :assistant}} = assigns) do
     ~H"""
-    <div class="chat chat-start">
+    <div id={@dom_id} class="chat chat-start">
       <div class="chat-bubble chat-bubble-primary text-sm prose prose-sm prose-invert max-w-none">
         {RagegWeb.Markdown.render(@message.content)}
       </div>
@@ -295,7 +319,7 @@ defmodule RagegWeb.ChatLive do
 
   defp message_bubble(assigns) do
     ~H"""
-    <div class="chat chat-start">
+    <div id={@dom_id} class="chat chat-start">
       <div class="chat-bubble chat-bubble-accent whitespace-pre-wrap text-xs opacity-60">
         {@message.content}
       </div>

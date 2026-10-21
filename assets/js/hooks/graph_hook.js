@@ -83,6 +83,12 @@ function detectDarkMode() {
   return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+// d3 replaces link `source`/`target` with node objects once a simulation has
+// seen them; the layout worker needs the bare ids back.
+function linkEnd(end) {
+  return end && typeof end === "object" ? end.id : end;
+}
+
 function createGraphHook() {
   return {
     mounted() {
@@ -90,7 +96,8 @@ function createGraphHook() {
       this.selectedNodeId = null;
       this.metric = "pagerank";
       this.simulation = null;
-
+      this.layoutWorker = null;
+      this.layoutRequestId = 0;
       // Listen for server events
       this.handleEvent("graph_data", (payload) => this.renderGraph(payload));
       this.handleEvent("update_metric", ({ metric }) => this.updateMetric(metric));
@@ -160,6 +167,10 @@ function createGraphHook() {
     destroyed() {
       if (this.simulation) this.simulation.stop();
       if (this.resizeObserver) this.resizeObserver.disconnect();
+      if (this.layoutWorker) {
+        this.layoutWorker.terminate();
+        this.layoutWorker = null;
+      }
     },
 
     renderGraph(data) {
@@ -184,6 +195,10 @@ function createGraphHook() {
 
       // Derive per-metric color/size domains from the actual displayed values.
       this._metricExtents = computeMetricExtents(nodes);
+
+      // Compute the layout off the main thread first; the simulation below is
+      // then only used to keep positions live while the user drags nodes.
+      const requestId = ++this.layoutRequestId;
 
       // Create simulation
       this.simulation = d3.forceSimulation(nodes)
@@ -292,6 +307,94 @@ function createGraphHook() {
 
       // Fit to view after settling
       setTimeout(() => this.fitToView(), 2000);
+
+      // Compute the layout off the main thread. The local simulation above is
+      // kept only for drag interaction; its automatic ticking is disabled so
+      // the two never fight over node positions.
+      this.simulation.stop();
+      this.requestLayout(nodes, links, requestId);
+    },
+
+    // -- Off-main-thread layout --
+
+    // Asks the worker for settled positions. Falls back to the local
+    // simulation when Workers are unavailable (older browsers, CSP).
+    requestLayout(nodes, links, requestId) {
+      const payload = {
+        type: "layout",
+        nodes: nodes.map(d => ({id: d.id})),
+        links: links.map(d => ({source: linkEnd(d.source), target: linkEnd(d.target)})),
+        width: this.width,
+        height: this.height,
+        iterations: 300
+      };
+
+      if (typeof Worker === "undefined") {
+        this.simulation.tick(300);
+        this.applyLayout();
+        return;
+      }
+
+      try {
+        if (!this.layoutWorker) {
+          this.layoutWorker = new Worker(
+            new URL("./graph_layout_worker.js", import.meta.url),
+            {type: "module"}
+          );
+
+          this.layoutWorker.onmessage = (event) => {
+            const msg = event.data || {};
+
+            if (msg.type === "layout_error") {
+              console.warn("[GraphHook] layout worker failed:", msg.message);
+              this.simulation.tick(300);
+              this.applyLayout();
+              return;
+            }
+
+            if (msg.type !== "layout_done") return;
+            if (msg.requestId !== this.layoutRequestId) return;
+
+            const byId = new Map(msg.positions.map(([id, x, y]) => [id, {x, y}]));
+
+            this._nodeData.forEach(d => {
+              const pos = byId.get(d.id);
+              if (pos) {
+                d.x = pos.x;
+                d.y = pos.y;
+              }
+            });
+
+            this.applyLayout();
+          };
+        }
+
+        this.layoutWorker.postMessage({...payload, requestId});
+      } catch (error) {
+        console.warn("[GraphHook] could not start layout worker:", error);
+        this.simulation.tick(300);
+        this.applyLayout();
+      }
+    },
+
+    // Writes current node positions into the DOM in one pass.
+    applyLayout() {
+      if (!this._nodeData) return;
+
+      const pos = new Map(this._nodeData.map(d => [d.id, d]));
+
+      this._links
+        .attr("x1", d => (pos.get(linkEnd(d.source)) || {}).x)
+        .attr("y1", d => (pos.get(linkEnd(d.source)) || {}).y)
+        .attr("x2", d => (pos.get(linkEnd(d.target)) || {}).x)
+        .attr("y2", d => (pos.get(linkEnd(d.target)) || {}).y);
+
+      this._nodes.attr("cx", d => d.x).attr("cy", d => d.y);
+      this._labels.attr("x", d => d.x).attr("y", d => d.y);
+
+      this.drawCommunityHulls(this.graphData.communities, this._nodeData);
+      this.updateMinimap();
+      this.fitToView();
     },
 
     nodeRadius(d) {

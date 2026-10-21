@@ -14,6 +14,7 @@ defmodule RagegWeb.ImpactLive do
   use RagegWeb, :live_view
 
   alias Rageg.Impact
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -26,6 +27,7 @@ defmodule RagegWeb.ImpactLive do
      |> assign(analysis: nil)
      |> assign(risk: nil)
      |> assign(affected_tests: nil)
+     |> assign(job_tag: nil)
      |> assign(error: nil)}
   end
 
@@ -40,14 +42,11 @@ defmodule RagegWeb.ImpactLive do
     if target == "" do
       {:noreply, assign(socket, error: gettext("Enter a target (e.g. MyModule.func/2)"))}
     else
-      pid = self()
-
-      Task.start(fn ->
-        analysis = Impact.analyze_change(target)
-        risk = Impact.risk_score(target)
-        tests = Impact.find_affected_tests(target)
-        send(pid, {:impact_results, analysis, risk, tests})
-      end)
+      socket =
+        TaskRunner.start(socket, :impact, fn ->
+          {Impact.analyze_change(target), Impact.risk_score(target),
+           Impact.find_affected_tests(target)}
+        end)
 
       {:noreply, assign(socket, loading: true, error: nil, analysis: nil, risk: nil)}
     end
@@ -58,24 +57,10 @@ defmodule RagegWeb.ImpactLive do
     {:noreply, socket}
   end
 
-  def handle_info({:impact_results, analysis, risk, tests}, socket) do
-    analysis_data =
-      case analysis do
-        {:ok, a} -> a
-        _ -> nil
-      end
-
-    risk_data =
-      case risk do
-        {:ok, r} -> r
-        _ -> nil
-      end
-
-    tests_data =
-      case tests do
-        {:ok, t} -> t
-        _ -> []
-      end
+  def handle_info({:task_result, :impact, {analysis, risk, tests}}, socket) do
+    analysis_data = unwrap(analysis)
+    risk_data = unwrap(risk)
+    tests_data = unwrap(tests) || []
 
     error =
       if is_nil(analysis_data) and is_nil(risk_data),
@@ -86,12 +71,25 @@ defmodule RagegWeb.ImpactLive do
      socket
      |> assign(
        loading: false,
+       job_tag: nil,
        analysis: analysis_data,
        risk: risk_data,
        affected_tests: tests_data,
        error: error
      )}
   end
+
+  def handle_info({:task_error, :impact, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       loading: false,
+       job_tag: nil,
+       error: gettext("Impact analysis failed: %{reason}", reason: inspect(reason))
+     )}
+  end
+
+  defp unwrap({:ok, value}), do: value
+  defp unwrap(_), do: nil
 
   @impl Phoenix.LiveView
   def render(assigns) do

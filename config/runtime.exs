@@ -111,6 +111,30 @@ if is_binary(auth_user) and is_binary(auth_pass) and auth_user != "" and auth_pa
   config :rageg, :basic_auth, {auth_user, auth_pass}
 end
 
+# Trusted workspace: a comma-separated allowlist of directories Rageg may
+# ingest, analyse, or refactor. Unset/empty means "no restriction" (the local
+# development default). Set it whenever the app is shared, e.g.
+#
+#     RAGEG_ALLOWED_ROOTS=~/code,/srv/repos
+#
+# Paths are expanded (~ and symlinks) before comparison; `..` traversal is
+# resolved first, so `/srv/repos/../../etc` is rejected.
+allowed_roots =
+  case System.get_env("RAGEG_ALLOWED_ROOTS") do
+    nil ->
+      []
+
+    value ->
+      value
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+  end
+
+if allowed_roots != [] do
+  config :rageg, :allowed_roots, allowed_roots
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

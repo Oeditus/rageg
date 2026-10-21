@@ -10,6 +10,7 @@ defmodule RagegWeb.MetacredoLive do
   use RagegWeb, :live_view
 
   alias Rageg.Metacredo
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -33,6 +34,7 @@ defmodule RagegWeb.MetacredoLive do
      |> assign(page: 1)
      |> assign(per_page: 50)
      |> assign(result: cached_result)
+     |> assign(job_tag: nil)
      |> assign(error: nil)
      |> assign_filtered_issues()}
   end
@@ -75,16 +77,12 @@ defmodule RagegWeb.MetacredoLive do
       {:noreply,
        assign(socket, error: gettext("No valid active profile path. Select a profile first."))}
     else
-      pid = self()
       strict? = socket.assigns.strict
 
-      {:ok, task_pid} =
-        Task.start(fn ->
-          res = Metacredo.analyze(path, strict: strict?)
-          send(pid, {:analysis_complete, res})
+      socket =
+        TaskRunner.start(socket, :metacredo, fn ->
+          Metacredo.analyze(path, strict: strict?)
         end)
-
-      Process.monitor(task_pid)
 
       {:noreply, assign(socket, running: true, error: nil)}
     end
@@ -101,19 +99,24 @@ defmodule RagegWeb.MetacredoLive do
      |> assign_filtered_issues()}
   end
 
-  def handle_info({:analysis_complete, {:ok, result}}, socket) do
+  def handle_info({:task_result, :metacredo, {:ok, result}}, socket) do
     {:noreply,
      socket
-     |> assign(running: false, result: result, page: 1, error: nil)
+     |> assign(running: false, job_tag: nil, result: result, page: 1, error: nil)
      |> assign_filtered_issues()}
   end
 
-  def handle_info({:analysis_complete, {:error, reason}}, socket) do
-    {:noreply, assign(socket, running: false, error: to_string(reason))}
+  def handle_info({:task_result, :metacredo, {:error, reason}}, socket) do
+    {:noreply, assign(socket, running: false, job_tag: nil, error: to_string(reason))}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket) do
-    {:noreply, assign(socket, running: false)}
+  def handle_info({:task_error, :metacredo, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       running: false,
+       job_tag: nil,
+       error: gettext("MetaCredo analysis failed: %{reason}", reason: inspect(reason))
+     )}
   end
 
   defp assign_filtered_issues(socket) do

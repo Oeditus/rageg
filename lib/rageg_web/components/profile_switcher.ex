@@ -91,7 +91,10 @@ defmodule RagegWeb.ProfileSwitcher do
     parent = self()
     cid = "profile-switcher"
 
-    Task.start(fn ->
+    # The switch itself runs off-process (Profiles replies from a supervised
+    # task); we only need a lightweight reporter here that forwards progress
+    # messages to this component and clears the spinner when it finishes.
+    Task.Supervisor.start_child(Rageg.TaskSupervisor, fn ->
       Profiles.switch(id,
         on_progress: fn msg ->
           Phoenix.LiveView.send_update(parent, __MODULE__,

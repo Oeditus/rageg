@@ -94,6 +94,45 @@ defmodule RagegWeb.Layouts do
   end
 
   @doc """
+  Renders a dismissible warning when subsystems have reported suppressed
+  errors (see `Rageg.Diagnostics`).
+
+  The banner is intentionally quiet: it never blocks the page, and it only
+  appears once something actually failed, so a healthy app shows nothing.
+  """
+  def degraded_banner(assigns) do
+    assigns = assign(assigns, :diagnostics, Rageg.Diagnostics.report())
+
+    ~H"""
+    <div
+      :if={map_size(@diagnostics) > 0}
+      id="degraded-banner"
+      class="alert alert-warning shadow-sm mb-4 text-xs"
+    >
+      <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
+      <div class="flex-1">
+        <span class="font-semibold">{gettext("Running in degraded mode")}</span>
+        <span class="text-base-content/70">
+          {gettext(
+            "%{count} subsystem(s) reported errors and returned partial data. Check the logs for details.",
+            count: map_size(@diagnostics)
+          )}
+        </span>
+      </div>
+      <div class="flex flex-wrap gap-1">
+        <span
+          :for={{operation, entry} <- Enum.take(@diagnostics, 4)}
+          class="badge badge-sm badge-ghost font-mono"
+          title={entry.last_reason}
+        >
+          {operation} ×{entry.count}
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Returns CSS class for active navigation link.
 
   When `exact` is true, matches only the exact path.

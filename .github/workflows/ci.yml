@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  MIX_ENV: test
+jobs:
+  test:
+    name: Compile, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `mix rageg.ci --base origin/$GITHUB_BASE_REF` diffs against the PR
+          # base, so we need the full history of that ref.
+          fetch-depth: 0
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+
+      - name: Restore deps and build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            ~/.cache/mix
+          key: ${{ runner.os }}-mix-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Credo (strict)
+        run: mix credo --strict
+
+      - name: Run tests
+        run: mix test
+
+  quality-gate:
+    name: Diff-based quality gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+
+      - name: Restore deps and build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            ~/.cache/mix
+          key: ${{ runner.os }}-mix-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      # `mix rageg.ci` runs `mix metacredo --diff` followed by `mix quality.ci`
+      # and emits GitHub Actions annotations with --format github.
+      - name: Run quality gateway
+        run: mix rageg.ci --base origin/${{ github.base_ref }} --format github

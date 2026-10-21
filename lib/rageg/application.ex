@@ -41,6 +41,11 @@ defmodule Rageg.Application do
       # Unlinked task supervisor for long-running background work (profile
       # activation, analysis) so a crashing task cannot take down a GenServer.
       {Task.Supervisor, name: Rageg.TaskSupervisor},
+      # Registry of supervised, cancelable LiveView jobs. Must start after the
+      # Task.Supervisor it launches children on.
+      Rageg.TaskRunner,
+      # Counters for errors swallowed by defensive `rescue` clauses.
+      Rageg.Diagnostics,
       # Profile manager -- CRUD, active project state, dllb ingestion
       Rageg.Profiles,
       # Periodic stats collector -- polls Ragex/dllb and broadcasts via PubSub

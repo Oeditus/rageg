@@ -161,7 +161,13 @@ defmodule Rageg.Stats do
       components: graph_components()
     }
   rescue
-    _ -> %{nodes: 0, edges: 0, density: 0.0, components: 0}
+    e ->
+      Rageg.Diagnostics.suppressed(:stats_graph, e, %{
+        nodes: 0,
+        edges: 0,
+        density: 0.0,
+        components: 0
+      })
   end
 
   # Connected-component count of the call graph. Delegates to Ragex (native
@@ -170,7 +176,7 @@ defmodule Rageg.Stats do
   defp graph_components do
     GraphAlgorithms.connected_components()
   rescue
-    _ -> 0
+    e -> Rageg.Diagnostics.suppressed(:stats_components, e, 0)
   catch
     _, _ -> 0
   end
@@ -195,7 +201,8 @@ defmodule Rageg.Stats do
       total: Map.get(vs_stats, :total_embeddings, 0)
     }
   rescue
-    _ -> %{model: "n/a", dimensions: 0, total: 0}
+    e ->
+      Rageg.Diagnostics.suppressed(:stats_embeddings, e, %{model: "n/a", dimensions: 0, total: 0})
   catch
     # VectorStore.stats/0 can raise an exit when its backing dllb pool is busy
     # (e.g. mid project-activation); never let that kill the Stats collector.
@@ -236,7 +243,13 @@ defmodule Rageg.Stats do
         %{hit_rate: 0.0, misses: 0, evictions: 0, size: 0}
     end
   rescue
-    _ -> %{hit_rate: 0.0, misses: 0, evictions: 0, size: 0}
+    e ->
+      Rageg.Diagnostics.suppressed(:stats_cache, e, %{
+        hit_rate: 0.0,
+        misses: 0,
+        evictions: 0,
+        size: 0
+      })
   catch
     _, _ -> %{hit_rate: 0.0, misses: 0, evictions: 0, size: 0}
   end
@@ -254,7 +267,12 @@ defmodule Rageg.Stats do
         %{total_requests: 0, total_tokens: 0, estimated_cost: 0.0}
     end
   rescue
-    _ -> %{total_requests: 0, total_tokens: 0, estimated_cost: 0.0}
+    e ->
+      Rageg.Diagnostics.suppressed(:stats_ai_usage, e, %{
+        total_requests: 0,
+        total_tokens: 0,
+        estimated_cost: 0.0
+      })
   catch
     _, _ -> %{total_requests: 0, total_tokens: 0, estimated_cost: 0.0}
   end
@@ -271,7 +289,15 @@ defmodule Rageg.Stats do
       projects: Map.get(ingested, :projects, 0)
     }
   rescue
-    _ -> %{connected: false, pool_size: 0, latency_ms: 0, nodes: 0, edges: 0, projects: 0}
+    e ->
+      Rageg.Diagnostics.suppressed(:stats_dllb, e, %{
+        connected: false,
+        pool_size: 0,
+        latency_ms: 0,
+        nodes: 0,
+        edges: 0,
+        projects: 0
+      })
   catch
     _, _ -> %{connected: false, pool_size: 0, latency_ms: 0, nodes: 0, edges: 0, projects: 0}
   end
@@ -288,7 +314,7 @@ defmodule Rageg.Stats do
       {0, false}
     end
   rescue
-    _ -> {0, false}
+    e -> Rageg.Diagnostics.suppressed(:stats_dllb_ping, e, {0, false})
   catch
     _, _ -> {0, false}
   end

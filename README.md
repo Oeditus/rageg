@@ -128,9 +128,15 @@ locally.
 - Production binds to loopback by default. Set `RAGEG_BIND_ALL=true` only when
   running behind an authenticating reverse proxy.
 - Enable HTTP Basic auth by setting `RAGEG_AUTH_USER` and `RAGEG_AUTH_PASSWORD`.
+- Restrict which directories may be ingested, analysed, or refactored with
+  `RAGEG_ALLOWED_ROOTS` (comma-separated, `~` allowed), e.g.
+  `RAGEG_ALLOWED_ROOTS=~/code,/srv/repos`. Unset means "no restriction".
 - API keys are stored in `~/.rageg/.ai_keys.json` (mode `0o600`) and are never
   sent to the browser; the configuration page shows masked placeholders.
-- Destructive MCP tools require an explicit confirmation before they run.
+- Destructive MCP tools require an explicit confirmation before they run, with a
+  "dry run first" toggle (on by default) when the tool supports `dry_run`.
+- Refactoring requires a preview before it can be applied; blocking conflicts
+  stop the flow and the confirmation modal lists the files that will change.
 
 ## Tests
 
@@ -138,6 +144,17 @@ locally.
 mix test
 ```
 
+The suite includes property-based tests (StreamData) for the pure parsing and
+formatting helpers in `Rageg.Graph` and `Rageg.Impact`.
+
+## CI
+
+`.github/workflows/ci.yml` runs, on every push and pull request:
+
+- `mix compile --warnings-as-errors`, `mix format --check-formatted`,
+  `mix credo --strict`, `mix test`
+- on pull requests, the diff-based quality gateway
+  `mix rageg.ci --base origin/${{ github.base_ref }} --format github`
 ## Project Structure
 
 ```

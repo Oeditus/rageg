@@ -143,46 +143,16 @@ defmodule Rageg.Profiles do
   def handle_call({:create, path, name}, _from, state) do
     abs_path = Path.expand(path)
 
-    if File.dir?(abs_path) do
-      all_profiles = load_all_profiles(state.profiles_dir)
-      existing = Enum.find(all_profiles, &(&1.path == abs_path))
+    cond do
+      not File.dir?(abs_path) ->
+        {:reply, {:error, "Directory does not exist: #{abs_path}"}, state}
 
-      profile =
-        if existing do
-          if name && name != "" && existing.name != name do
-            updated = %{existing | name: name}
-            save_profile(updated, state.profiles_dir)
-            updated
-          else
-            existing
-          end
-        else
-          new_p = Profile.new(abs_path, name)
-          save_profile(new_p, state.profiles_dir)
-          new_p
-        end
+      not Rageg.Workspace.allowed?(abs_path) ->
+        {:reply, {:error, Rageg.Workspace.rejection_message(abs_path)}, state}
 
-      # If no active profile exists yet, make this one active
-      new_active =
-        if state.active == nil do
-          save_active_profile_id(profile.id, state.profiles_dir)
-
-          start_background(fn ->
-            activate_project(profile, fn _ -> :ok end)
-            ready = Profile.mark_ingested(profile)
-            save_profile(ready, state.profiles_dir)
-            Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready})
-          end)
-
-          Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, profile})
-          profile
-        else
-          state.active
-        end
-
-      {:reply, {:ok, profile}, %{state | active: new_active}}
-    else
-      {:reply, {:error, "Directory does not exist: #{abs_path}"}, state}
+      true ->
+        {reply, state} = do_create(abs_path, name, state)
+        {:reply, reply, state}
     end
   end
 
@@ -241,31 +211,38 @@ defmodule Rageg.Profiles do
   end
 
   def handle_call({:switch, id, opts}, from, state) do
-    on_progress = Keyword.get(opts, :on_progress, fn _ -> :ok end)
-
     case find_profile(id, state.profiles_dir) do
       nil ->
         {:reply, {:error, :profile_not_found}, state}
 
       profile ->
-        indexing_profile = Profile.mark_indexing(profile)
-        save_profile(indexing_profile, state.profiles_dir)
-        save_active_profile_id(indexing_profile.id, state.profiles_dir)
-
-        Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, indexing_profile})
-
-        # Run the (potentially minutes-long) activation off the GenServer so it
-        # can keep servicing list/get/create/delete calls. The caller still
-        # blocks until `GenServer.reply/2` fires (from the :switch_finished
-        # cast), preserving the synchronous `switch/2` contract.
-        dir = state.profiles_dir
-
-        start_background(fn ->
-          switch_activate(indexing_profile, dir, on_progress, from)
-        end)
-
-        {:noreply, state}
+        if Rageg.Workspace.allowed?(profile.path) do
+          begin_switch(profile, opts, from, state)
+        else
+          {:reply, {:error, Rageg.Workspace.rejection_message(profile.path)}, state}
+        end
     end
+  end
+
+  defp begin_switch(profile, opts, from, state) do
+    on_progress = Keyword.get(opts, :on_progress, fn _ -> :ok end)
+    indexing_profile = Profile.mark_indexing(profile)
+    save_profile(indexing_profile, state.profiles_dir)
+    save_active_profile_id(indexing_profile.id, state.profiles_dir)
+
+    Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, indexing_profile})
+
+    # Run the (potentially minutes-long) activation off the GenServer so it
+    # can keep servicing list/get/create/delete calls. The caller still
+    # blocks until `GenServer.reply/2` fires (from the :switch_finished
+    # cast), preserving the synchronous `switch/2` contract.
+    dir = state.profiles_dir
+
+    start_background(fn ->
+      switch_activate(indexing_profile, dir, on_progress, from)
+    end)
+
+    {:noreply, state}
   end
 
   @impl GenServer
@@ -348,10 +325,9 @@ defmodule Rageg.Profiles do
   # Prefer the unlinked Task.Supervisor so a crashing background job cannot take
   # down the Profiles GenServer.
   defp start_background(fun) do
-    if Process.whereis(Rageg.TaskSupervisor) do
-      Task.Supervisor.start_child(Rageg.TaskSupervisor, fun)
-    else
-      Task.start(fun)
+    case Process.whereis(Rageg.TaskSupervisor) do
+      nil -> Task.start(fun)
+      _ -> Task.Supervisor.start_child(Rageg.TaskSupervisor, fun)
     end
   end
 
@@ -519,5 +495,48 @@ defmodule Rageg.Profiles do
     _ -> :ok
   catch
     _, _ -> :ok
+  end
+
+  # Returns `{{:ok, profile}, new_state}` so the caller can reply with the
+  # profile while the GenServer keeps the updated active profile.
+  defp do_create(abs_path, name, state) do
+    all_profiles = load_all_profiles(state.profiles_dir)
+    existing = Enum.find(all_profiles, &(&1.path == abs_path))
+
+    profile =
+      if existing do
+        if name && name != "" && existing.name != name do
+          updated = %{existing | name: name}
+          save_profile(updated, state.profiles_dir)
+          updated
+        else
+          existing
+        end
+      else
+        new_p = Profile.new(abs_path, name)
+        save_profile(new_p, state.profiles_dir)
+        new_p
+      end
+
+    # If no active profile exists yet, make this one active
+    new_active =
+      if state.active == nil do
+        save_active_profile_id(profile.id, state.profiles_dir)
+
+        start_background(fn ->
+          activate_project(profile, fn _ -> :ok end)
+          ready = Profile.mark_ingested(profile)
+          save_profile(ready, state.profiles_dir)
+          Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready})
+        end)
+
+        Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, profile})
+        profile
+      else
+        state.active
+      end
+
+    state = %{state | active: new_active}
+    {{:ok, profile}, state}
   end
 end

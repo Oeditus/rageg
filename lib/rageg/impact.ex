@@ -133,7 +133,16 @@ defmodule Rageg.Impact do
 
   # -- Private --
 
-  defp parse_node_ref(target) when is_binary(target) do
+  @doc """
+  Parses a `"Module.fun/arity"` or `"Module"` reference into the Ragex node
+  reference tuple (`{:function, Module, :fun, arity}` / `{:module, Module}`).
+
+  Exposed for tests and for callers that already hold a reference string.
+  Raises `ArgumentError` when the reference names an atom that does not exist
+  (we never create atoms from user input).
+  """
+  @spec parse_node_ref(String.t() | term()) :: term()
+  def parse_node_ref(target) when is_binary(target) do
     if String.contains?(target, "/") do
       # "Module.func/2" -> {:function, Module, :func, 2}
       [path, arity_str] = String.split(target, "/", parts: 2)
@@ -153,11 +162,15 @@ defmodule Rageg.Impact do
     end
   end
 
-  defp parse_node_ref(target), do: target
+  def parse_node_ref(target), do: target
 
   defp safe_atom(str) when is_binary(str), do: Rageg.Atom.existing!(str)
 
-  defp format_ref({:function, mod, name, arity}), do: "#{mod}.#{name}/#{arity}"
-  defp format_ref({:module, name}), do: "#{name}"
-  defp format_ref(other), do: inspect(other)
+  @doc """
+  Formats a node reference back into `"Module.fun/arity"` / `"Module"` form.
+  """
+  @spec format_ref(term()) :: String.t()
+  def format_ref({:function, mod, name, arity}), do: "#{mod}.#{name}/#{arity}"
+  def format_ref({:module, name}), do: "#{name}"
+  def format_ref(other), do: inspect(other)
 end

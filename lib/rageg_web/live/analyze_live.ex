@@ -12,6 +12,7 @@ defmodule RagegWeb.AnalyzeLive do
   use RagegWeb, :live_view
 
   alias Rageg.Analyze
+  alias Rageg.TaskRunner
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -36,7 +37,7 @@ defmodule RagegWeb.AnalyzeLive do
      |> assign(url_auth_token: "")
      |> assign(url_result: nil)
      |> assign(running: false)
-     |> assign(task_pid: nil)
+     |> assign(job_tag: nil)
      |> assign(progress: [])
      |> assign(results: nil)
      |> assign(index_result: nil)
@@ -82,31 +83,19 @@ defmodule RagegWeb.AnalyzeLive do
     if path == "" do
       {:noreply, assign(socket, error: gettext("Enter a project path"))}
     else
-      pid = self()
       analyses = socket.assigns.analyses
 
-      {:ok, task_pid} =
-        Task.start(fn ->
-          result =
-            Analyze.run(path,
-              analyses: analyses,
-              on_progress: fn msg -> send(pid, {:progress, msg}) end
-            )
-
-          send(pid, {:analysis_complete, result})
+      socket =
+        TaskRunner.start(socket, :analysis, fn ->
+          Analyze.run(path,
+            analyses: analyses,
+            on_progress: fn msg -> send(self(), {:progress, msg}) end
+          )
         end)
 
-      ref = Process.monitor(task_pid)
-
       {:noreply,
-       assign(socket,
-         running: true,
-         task_pid: task_pid,
-         task_ref: ref,
-         error: nil,
-         results: nil,
-         progress: []
-       )}
+       socket
+       |> assign(running: true, error: nil, results: nil, progress: [])}
     end
   end
 
@@ -116,49 +105,34 @@ defmodule RagegWeb.AnalyzeLive do
     if url == "" do
       {:noreply, assign(socket, error: gettext("Enter a target URL or Git repository"))}
     else
-      pid = self()
-
-      opts = [
-        depth: socket.assigns.url_depth,
-        index_graph: socket.assigns.url_index_graph
-      ]
-
       opts =
-        if socket.assigns.url_auth_token != "" do
-          Keyword.put(opts, :auth_token, socket.assigns.url_auth_token)
-        else
-          opts
-        end
+        [
+          depth: socket.assigns.url_depth,
+          index_graph: socket.assigns.url_index_graph
+        ]
+        |> maybe_put_auth_token(socket.assigns.url_auth_token)
 
-      {:ok, task_pid} =
-        Task.start(fn ->
-          send(pid, {:progress, "Analyzing URL: #{url}..."})
-          result = Analyze.analyze_url(url, opts)
-          send(pid, {:url_analysis_complete, result})
+      socket =
+        TaskRunner.start(socket, :url_analysis, fn ->
+          send(self(), {:progress, "Analyzing URL: #{url}..."})
+          Analyze.analyze_url(url, opts)
         end)
 
-      ref = Process.monitor(task_pid)
-
       {:noreply,
-       assign(socket,
-         running: true,
-         task_pid: task_pid,
-         task_ref: ref,
-         error: nil,
-         url_result: nil,
-         progress: []
-       )}
+       socket
+       |> assign(running: true, error: nil, url_result: nil, progress: [])}
     end
   end
 
   def handle_event("cancel_analysis", _params, socket) do
-    if pid = socket.assigns.task_pid do
-      Process.exit(pid, :kill)
-    end
+    if tag = socket.assigns.job_tag, do: TaskRunner.cancel(tag)
 
-    progress = socket.assigns.progress ++ ["Analysis cancelled by user"]
-    {:noreply, assign(socket, running: false, task_pid: nil, progress: progress)}
+    progress = socket.assigns.progress ++ [gettext("Analysis cancelled by user")]
+    {:noreply, assign(socket, running: false, job_tag: nil, progress: progress)}
   end
+
+  defp maybe_put_auth_token(opts, ""), do: opts
+  defp maybe_put_auth_token(opts, token), do: Keyword.put(opts, :auth_token, token)
 
   @impl Phoenix.LiveView
   def handle_info({:rageg_profile_changed, profile}, socket) do
@@ -171,54 +145,46 @@ defmodule RagegWeb.AnalyzeLive do
     {:noreply, assign(socket, progress: progress)}
   end
 
-  def handle_info({:analysis_complete, {:ok, result}}, socket) do
+  def handle_info({:task_result, :analysis, {:ok, result}}, socket) do
     {:noreply,
      socket
      |> assign(
        running: false,
-       task_pid: nil,
+       job_tag: nil,
        results: result.results,
        index_result: result.index,
        error: nil
      )}
   end
 
-  def handle_info({:analysis_complete, {:error, reason}}, socket) do
-    {:noreply, assign(socket, running: false, task_pid: nil, error: to_string(reason))}
+  def handle_info({:task_result, :analysis, {:error, reason}}, socket) do
+    {:noreply, assign(socket, running: false, job_tag: nil, error: to_string(reason))}
   end
 
-  def handle_info({:url_analysis_complete, {:ok, report}}, socket) do
-    progress = socket.assigns.progress ++ ["URL Analysis finished successfully"]
+  def handle_info({:task_result, :url_analysis, {:ok, report}}, socket) do
+    progress = socket.assigns.progress ++ [gettext("URL Analysis finished successfully")]
 
     {:noreply,
      socket
      |> assign(
        running: false,
-       task_pid: nil,
+       job_tag: nil,
        url_result: report,
        progress: progress,
        error: nil
      )}
   end
 
-  def handle_info({:url_analysis_complete, {:error, reason}}, socket) do
-    {:noreply, assign(socket, running: false, task_pid: nil, error: to_string(reason))}
+  def handle_info({:task_result, :url_analysis, {:error, reason}}, socket) do
+    {:noreply, assign(socket, running: false, job_tag: nil, error: to_string(reason))}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, :normal}, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:DOWN, _ref, :process, _pid, :killed}, socket) do
-    {:noreply, assign(socket, running: false, task_pid: nil)}
-  end
-
-  def handle_info({:DOWN, _ref, :process, _pid, reason}, socket) do
+  def handle_info({:task_error, tag, reason}, socket) when tag in [:analysis, :url_analysis] do
     {:noreply,
      assign(socket,
        running: false,
-       task_pid: nil,
-       error: "Analysis process crashed: #{inspect(reason)}"
+       job_tag: nil,
+       error: gettext("Analysis process crashed: %{reason}", reason: inspect(reason))
      )}
   end
 
