@@ -23,6 +23,14 @@ jobs:
           otp-version: "29"
           elixir-version: "1.20"
 
+      # `egit` is a hard dependency of this project and compiles a C++ NIF
+      # against libgit2 (see deps/egit/c_src/Makefile, which shells out to
+      # `pkg-config --cflags/--libs libgit2`). Without the headers the build
+      # fails with `fatal error: git2.h: No such file or directory`. Ragex
+      # installs the same package in .github/actions/setup-ragex.
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgit2-dev
+
       - name: Restore deps and build caches
         uses: actions/cache@v4
         with:
@@ -61,6 +69,11 @@ jobs:
         with:
           otp-version: "29"
           elixir-version: "1.20"
+
+      # See the note in the `test` job: egit needs the libgit2 headers to
+      # compile its NIF, and `mix deps.get` in this job compiles deps too.
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgit2-dev
 
       - name: Restore deps and build caches
         uses: actions/cache@v4
