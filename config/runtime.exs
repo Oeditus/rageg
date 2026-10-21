@@ -102,6 +102,15 @@ config :ragex, :ai_keys,
   openai: System.get_env("OPENAI_API_KEY"),
   anthropic: System.get_env("ANTHROPIC_API_KEY")
 
+# Optional HTTP Basic authentication. Disabled unless both env vars are set.
+# Enable this whenever Rageg is reachable beyond loopback (see README).
+auth_user = System.get_env("RAGEG_AUTH_USER")
+auth_pass = System.get_env("RAGEG_AUTH_PASSWORD")
+
+if is_binary(auth_user) and is_binary(auth_pass) and auth_user != "" and auth_pass != "" do
+  config :rageg, :basic_auth, {auth_user, auth_pass}
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
@@ -119,14 +128,19 @@ if config_env() == :prod do
 
   config :rageg, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Bind to loopback by default. Rageg can reset all state, run arbitrary dllb
+  # queries, execute destructive MCP tools, and ingest arbitrary directories,
+  # so it must not be exposed publicly without authentication. To bind all
+  # interfaces (e.g. behind an authenticating reverse proxy), set
+  # RAGEG_BIND_ALL=true *and* configure RAGEG_AUTH_USER/RAGEG_AUTH_PASSWORD.
+  bind_all? = System.get_env("RAGEG_BIND_ALL", "false") in ["true", "1"]
+  ip = if bind_all?, do: {0, 0, 0, 0, 0, 0, 0, 0}, else: {127, 0, 0, 1}
+
   config :rageg, RagegWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
+      # See https://hexdocs.pm/bandit/Bandit.html#t:options/0 for details.
+      ip: ip
     ],
     secret_key_base: secret_key_base
 

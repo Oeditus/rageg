@@ -105,8 +105,14 @@ defmodule Rageg.Profiles.IngestCache do
     path = manifest_path(project_tag)
 
     case File.read(path) do
-      {:ok, json} -> :json.decode(json)
-      _ -> %{}
+      {:ok, json} ->
+        case Jason.decode(json) do
+          {:ok, map} when is_map(map) -> map
+          _ -> %{}
+        end
+
+      _ ->
+        %{}
     end
   rescue
     _ -> %{}
@@ -115,7 +121,7 @@ defmodule Rageg.Profiles.IngestCache do
   defp save_manifest(project_tag, manifest) do
     path = manifest_path(project_tag)
     File.mkdir_p!(Path.dirname(path))
-    File.write(path, IO.iodata_to_binary(:json.encode(manifest)))
+    File.write(path, Jason.encode!(manifest))
   end
 
   defp fingerprint(path) do

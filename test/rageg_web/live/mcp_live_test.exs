@@ -37,6 +37,11 @@ defmodule RagegWeb.McpLiveTest do
       refute has_element?(view, "#mcp-json-textarea")
     end
 
+    test "search input is wired to send typed values", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/mcp")
+      assert has_element?(view, ~s|#mcp-search-input[name="query"]|)
+    end
+
     test "executes tool call and displays result", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/mcp")
 

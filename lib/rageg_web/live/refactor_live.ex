@@ -48,11 +48,17 @@ defmodule RagegWeb.RefactorLive do
   end
 
   def handle_event("update_params", params, socket) do
-    # Merge form params (skip _target and _csrf)
+    # Merge form params (skip _target and _csrf). Keys that are not already
+    # known atoms are ignored instead of creating new atoms from user input.
     new_params =
       params
       |> Map.drop(["_target", "_csrf_token"])
-      |> Map.new(fn {k, v} -> {safe_key_atom(k), parse_param_value(v)} end)
+      |> Enum.reduce(%{}, fn {k, v}, acc ->
+        case safe_key_atom(k) do
+          nil -> acc
+          atom -> Map.put(acc, atom, parse_param_value(v))
+        end
+      end)
 
     {:noreply,
      assign(socket, params: Map.merge(socket.assigns.params, new_params), preview_result: nil)}
@@ -225,7 +231,10 @@ defmodule RagegWeb.RefactorLive do
           <h2 class="text-lg font-bold">{gettext("Refactoring Simulation Preview")}</h2>
 
           <%!-- Conflict checks --%>
-          <div :if={@preview_result.conflicts.has_conflicts} class="card bg-base-200 shadow-sm border-l-4 border-error/50">
+          <div
+            :if={@preview_result.conflicts.has_conflicts}
+            class="card bg-base-200 shadow-sm border-l-4 border-error/50"
+          >
             <div class="card-body p-4 space-y-3">
               <h3 class="font-semibold text-sm flex items-center gap-2 text-error">
                 <.icon name="hero-exclamation-triangle" class="size-5" />
@@ -240,12 +249,19 @@ defmodule RagegWeb.RefactorLive do
               <div class="space-y-2">
                 <div
                   :for={c <- @preview_result.conflicts.conflicts}
-                  class={["p-2 rounded bg-base-100 text-xs border",
-                          if(c.severity == :error, do: "border-error/20 text-error", else: "border-warning/20 text-warning")]}
+                  class={[
+                    "p-2 rounded bg-base-100 text-xs border",
+                    if(c.severity == :error,
+                      do: "border-error/20 text-error",
+                      else: "border-warning/20 text-warning"
+                    )
+                  ]}
                 >
                   <div class="font-bold capitalize">{c.severity}: {c.message}</div>
                   <div :if={c.file} class="opacity-70 mt-1 font-mono">{c.file} : {c.line}</div>
-                  <div :if={c.suggestion} class="italic mt-1 text-base-content/80">Suggestion: {c.suggestion}</div>
+                  <div :if={c.suggestion} class="italic mt-1 text-base-content/80">
+                    Suggestion: {c.suggestion}
+                  </div>
                 </div>
               </div>
             </div>
@@ -253,7 +269,9 @@ defmodule RagegWeb.RefactorLive do
 
           <div :if={!@preview_result.conflicts.has_conflicts} class="alert alert-success text-xs">
             <.icon name="hero-check-circle" class="size-5" />
-            <span>{gettext("Conflict analysis clean: no arity, name or scope issues detected.")}</span>
+            <span>
+              {gettext("Conflict analysis clean: no arity, name or scope issues detected.")}
+            </span>
           </div>
 
           <%!-- Diffs --%>
@@ -304,6 +322,6 @@ defmodule RagegWeb.RefactorLive do
   defp safe_key_atom(key) when is_binary(key) do
     String.to_existing_atom(key)
   rescue
-    ArgumentError -> String.to_atom(key)
+    ArgumentError -> nil
   end
 end

@@ -48,22 +48,51 @@ defmodule Rageg.MCP do
     _ -> []
   end
 
-  # Keep the tool envelope keys (name/description/destruction_level) as atoms but recursively
-  # stringify the `inputSchema` so property specs (`type`, `default`, `enum`,
-  # `description`, `required`) are always readable via string keys.
-  defp normalize_tool_schema(%{inputSchema: schema} = tool) do
-    tool
-    |> Map.put_new(:destruction_level, :none)
-    |> Map.put(:inputSchema, stringify_keys(schema))
-  end
+  # Normalize every tool to a single canonical shape so UI consumers can rely
+  # on one convention: the envelope keeps atom keys (`:inputSchema`,
+  # `:destruction_level`) and the schema itself is recursively stringified so
+  # property specs (`type`, `default`, `enum`, `description`, `required`) are
+  # always readable via string keys. This is exactly the shape that
+  # `RagegWeb.McpLive.get_schema_properties/1` expects.
+  defp normalize_tool_schema(tool) when is_map(tool) do
+    schema = Map.get(tool, :inputSchema) || Map.get(tool, "inputSchema") || %{}
 
-  defp normalize_tool_schema(%{"inputSchema" => schema} = tool) do
+    level =
+      normalize_destruction_level(
+        Map.get(tool, :destruction_level) || Map.get(tool, "destruction_level") || :none
+      )
+
     tool
-    |> Map.put_new("destruction_level", "none")
-    |> Map.put("inputSchema", stringify_keys(schema))
+    |> Map.drop([:inputSchema, "inputSchema", :destruction_level, "destruction_level"])
+    |> Map.put(:inputSchema, stringify_keys(schema))
+    |> Map.put(:destruction_level, level)
   end
 
   defp normalize_tool_schema(tool), do: tool
+
+  defp normalize_destruction_level(level) when is_atom(level) do
+    case level do
+      :none -> :none
+      :low -> :low
+      :medium -> :medium
+      :high -> :high
+      :full -> :full
+      _ -> :none
+    end
+  end
+
+  defp normalize_destruction_level(level) when is_binary(level) do
+    case level do
+      "none" -> :none
+      "low" -> :low
+      "medium" -> :medium
+      "high" -> :high
+      "full" -> :full
+      _ -> :none
+    end
+  end
+
+  defp normalize_destruction_level(_), do: :none
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn

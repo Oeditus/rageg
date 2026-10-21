@@ -239,7 +239,12 @@ defmodule RagegWeb.AssessLive do
 
       <%!-- Branch Selection Card --%>
       <div class="card bg-base-200 shadow-sm">
-        <form id="assess-form" phx-change="form_change" phx-submit="run_assessment" class="card-body p-4 space-y-4">
+        <form
+          id="assess-form"
+          phx-change="form_change"
+          phx-submit="run_assessment"
+          class="card-body p-4 space-y-4"
+        >
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <%!-- Base Ref --%>
             <div class="form-control">
@@ -409,7 +414,10 @@ defmodule RagegWeb.AssessLive do
               </summary>
               <div class="collapse-content p-0 pt-2">
                 <ul class="space-y-0.5">
-                  <li :for={file <- @result.changed_files} class="text-xs font-mono text-base-content/70 py-0.5">
+                  <li
+                    :for={file <- @result.changed_files}
+                    class="text-xs font-mono text-base-content/70 py-0.5"
+                  >
                     {file}
                   </li>
                 </ul>
@@ -426,10 +434,13 @@ defmodule RagegWeb.AssessLive do
               {gettext("Assessment Report")}
             </h2>
             <%= if @result.format == "json" do %>
-              <pre class="mt-3 p-4 bg-base-100 rounded-box text-xs font-mono overflow-x-auto max-h-[70vh] overflow-y-auto whitespace-pre-wrap" phx-no-curly-interpolation>{@report}</pre>
+              <pre
+                class="mt-3 p-4 bg-base-100 rounded-box text-xs font-mono overflow-x-auto max-h-[70vh] overflow-y-auto whitespace-pre-wrap"
+                phx-no-curly-interpolation
+              >{@report}</pre>
             <% else %>
               <div class="mt-3 prose prose-sm max-w-none bg-base-100 rounded-box p-4 overflow-y-auto max-h-[70vh]">
-                {raw(render_markdown(@report))}
+                {raw(RagegWeb.Markdown.to_html(@report))}
               </div>
             <% end %>
           </div>
@@ -437,21 +448,5 @@ defmodule RagegWeb.AssessLive do
       </div>
     </div>
     """
-  end
-
-  # -- Helpers --
-
-  defp render_markdown(nil), do: ""
-
-  defp render_markdown(markdown) do
-    case MDEx.to_html(markdown, plugins: [MDExGFM, MDExMermaid, MDExKatex, MdexMultilineCells]) do
-      {:ok, html} ->
-        html
-
-      {:error, _reason} ->
-        markdown
-        |> Phoenix.HTML.html_escape()
-        |> Phoenix.HTML.safe_to_string()
-    end
   end
 end

@@ -38,6 +38,9 @@ defmodule Rageg.Application do
       RagegWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:rageg, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Rageg.PubSub},
+      # Unlinked task supervisor for long-running background work (profile
+      # activation, analysis) so a crashing task cannot take down a GenServer.
+      {Task.Supervisor, name: Rageg.TaskSupervisor},
       # Profile manager -- CRUD, active project state, dllb ingestion
       Rageg.Profiles,
       # Periodic stats collector -- polls Ragex/dllb and broadcasts via PubSub

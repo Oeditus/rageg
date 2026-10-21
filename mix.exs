@@ -104,7 +104,7 @@ defmodule Rageg.MixProject do
         "phx.digest"
       ],
       quality: ["format", "credo"],
-      "quality.ci": ["format --check-formatted", "credo"],
+      "quality.ci": ["format --check-formatted", "credo --strict"],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",

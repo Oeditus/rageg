@@ -61,13 +61,58 @@ defmodule RagegWeb.ConfigurationLiveTest do
 
       assert html =~ "Configuration saved successfully!"
 
-      # Check keys persisted in the AIKeys configuration
-      config = AIKeys.get_config()
+      # Check keys persisted in the AIKeys configuration (raw values are
+      # server-side only; get_config/0 returns masked placeholders).
+      config = AIKeys.get_raw_config()
       assert config.deepseek_r1 == "test-deepseek-key"
       assert config.openai == "test-openai-key"
       assert config.anthropic == "test-anthropic-key"
       assert config.default_provider == :openai
       assert config.fallback_enabled == true
+    end
+
+    test "never exposes real key values to the client", %{conn: conn} do
+      AIKeys.save_config(%{
+        deepseek_r1: "sk-secret-value-1234",
+        openai: "",
+        anthropic: "",
+        default_provider: :deepseek_r1,
+        fallback_enabled: false
+      })
+
+      {:ok, _view, html} = live(conn, ~p"/configuration")
+
+      refute html =~ "sk-secret-value-1234"
+      assert html =~ "••••1234"
+      assert AIKeys.get_config().deepseek_r1 == "••••1234"
+    end
+
+    test "saving without changing a key preserves the stored value", %{conn: conn} do
+      AIKeys.save_config(%{
+        deepseek_r1: "keep-me-9999",
+        openai: "",
+        anthropic: "",
+        default_provider: :deepseek_r1,
+        fallback_enabled: false
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/configuration")
+
+      html =
+        view
+        |> form("#config-form", %{
+          config: %{
+            deepseek_r1: "••••9999",
+            openai: "",
+            anthropic: "",
+            default_provider: "deepseek_r1",
+            fallback_enabled: "false"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Configuration saved successfully!"
+      assert AIKeys.get_raw_config().deepseek_r1 == "keep-me-9999"
     end
   end
 end

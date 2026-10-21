@@ -141,7 +141,7 @@ defmodule Rageg.Refactor do
     Refactor.rename_function(
       normalize_module(params.module),
       to_atom(params.old_name),
-      to_atom(params.new_name),
+      to_new_atom(params.new_name),
       params.arity,
       opts
     )
@@ -152,7 +152,7 @@ defmodule Rageg.Refactor do
   def execute(:rename_module, params, opts) do
     Refactor.rename_module(
       normalize_module(params.old_name),
-      normalize_module(params.new_name),
+      normalize_new_module(params.new_name),
       opts
     )
   rescue
@@ -164,7 +164,7 @@ defmodule Rageg.Refactor do
       normalize_module(params.module),
       to_atom(params.source_function),
       params.source_arity,
-      to_atom(params.new_name),
+      to_new_atom(params.new_name),
       {params.line_start, params.line_end},
       opts
     )
@@ -184,12 +184,7 @@ defmodule Rageg.Refactor do
   end
 
   def execute(:convert_visibility, params, opts) do
-    visibility =
-      case to_string(params.visibility) |> String.trim() |> String.downcase() do
-        "public" -> :public
-        "private" -> :private
-        other -> String.to_existing_atom(other)
-      end
+    visibility = parse_visibility(params.visibility)
 
     Refactor.convert_visibility(
       normalize_module(params.module),
@@ -208,7 +203,7 @@ defmodule Rageg.Refactor do
       to_atom(params.function),
       params.arity,
       to_atom(params.old_param),
-      to_atom(params.new_param),
+      to_new_atom(params.new_param),
       opts
     )
   rescue
@@ -232,7 +227,7 @@ defmodule Rageg.Refactor do
   def execute(:move_function, params, opts) do
     Refactor.move_function(
       normalize_module(params.source_module),
-      normalize_module(params.target_module),
+      normalize_new_module(params.target_module),
       to_atom(params.function_name),
       params.arity,
       opts
@@ -246,7 +241,7 @@ defmodule Rageg.Refactor do
 
     Refactor.extract_module(
       normalize_module(params.source_module),
-      normalize_module(params.new_module),
+      normalize_new_module(params.new_module),
       functions,
       opts
     )
@@ -278,11 +273,18 @@ defmodule Rageg.Refactor do
   # -- Preview Helpers --
 
   defp normalize_params_for_preview(operation, params) do
-    # Ensure keys are atoms
+    # Ensure keys are atoms. Keys are our own known field names, so only
+    # already-existing atoms are used (unknown keys are dropped).
     params =
-      Map.new(params, fn
-        {k, v} when is_binary(k) -> {safe_atom(k), v}
-        {k, v} -> {k, v}
+      Enum.reduce(params, %{}, fn
+        {k, v}, acc when is_binary(k) ->
+          case Rageg.Atom.existing(k) do
+            {:ok, atom} -> Map.put(acc, atom, v)
+            {:error, :unknown_atom} -> acc
+          end
+
+        {k, v}, acc ->
+          Map.put(acc, k, v)
       end)
 
     normalize_params(operation, params)
@@ -292,7 +294,7 @@ defmodule Rageg.Refactor do
     %{
       module: normalize_module(params.module),
       old_name: to_atom(params.old_name),
-      new_name: to_atom(params.new_name),
+      new_name: to_new_atom(params.new_name),
       arity: to_integer(params.arity)
     }
   end
@@ -300,7 +302,7 @@ defmodule Rageg.Refactor do
   defp normalize_params(:rename_module, params) do
     %{
       old_name: normalize_module(params.old_name),
-      new_name: normalize_module(params.new_name)
+      new_name: normalize_new_module(params.new_name)
     }
   end
 
@@ -309,7 +311,7 @@ defmodule Rageg.Refactor do
       module: normalize_module(params.module),
       source_function: to_atom(params.source_function),
       source_arity: to_integer(params.source_arity),
-      new_name: to_atom(params.new_name),
+      new_name: to_new_atom(params.new_name),
       line_start: to_integer(params.line_start),
       line_end: to_integer(params.line_end)
     }
@@ -328,12 +330,7 @@ defmodule Rageg.Refactor do
       module: normalize_module(params.module),
       function_name: to_atom(params.function_name),
       arity: to_integer(params.arity),
-      visibility:
-        case to_string(params.visibility) |> String.trim() |> String.downcase() do
-          "public" -> :public
-          "private" -> :private
-          other -> String.to_existing_atom(other)
-        end
+      visibility: parse_visibility(params.visibility)
     }
   end
 
@@ -343,7 +340,7 @@ defmodule Rageg.Refactor do
       function: to_atom(params.function),
       arity: to_integer(params.arity),
       old_param: to_atom(params.old_param),
-      new_param: to_atom(params.new_param)
+      new_param: to_new_atom(params.new_param)
     }
   end
 
@@ -359,7 +356,7 @@ defmodule Rageg.Refactor do
   defp normalize_params(:move_function, params) do
     %{
       source_module: normalize_module(params.source_module),
-      target_module: normalize_module(params.target_module),
+      target_module: normalize_new_module(params.target_module),
       function_name: to_atom(params.function_name),
       arity: to_integer(params.arity)
     }
@@ -368,7 +365,7 @@ defmodule Rageg.Refactor do
   defp normalize_params(:extract_module, params) do
     %{
       source_module: normalize_module(params.source_module),
-      new_module: normalize_module(params.new_module),
+      new_module: normalize_new_module(params.new_module),
       functions: params.functions
     }
   end
@@ -767,35 +764,51 @@ defmodule Rageg.Refactor do
 
   # -- Helpers --
 
+  # References that must already exist (module/function/param names).
   defp normalize_module(module_str) when is_binary(module_str) do
-    module_str = String.trim(module_str)
-
-    full =
-      if String.starts_with?(module_str, "Elixir.") do
-        module_str
-      else
-        "Elixir." <> module_str
-      end
-
-    safe_atom(full)
+    existing_atom!(full_module_name(module_str))
   end
 
   defp normalize_module(module_atom) when is_atom(module_atom) do
     normalize_module(Atom.to_string(module_atom))
   end
 
+  # New modules (rename/move/extract targets) may legitimately not exist yet.
+  defp normalize_new_module(module_str) when is_binary(module_str) do
+    new_atom!(full_module_name(module_str))
+  end
+
+  defp normalize_new_module(module_atom) when is_atom(module_atom) do
+    normalize_new_module(Atom.to_string(module_atom))
+  end
+
+  defp full_module_name(module_str) do
+    module_str = String.trim(module_str)
+
+    if String.starts_with?(module_str, "Elixir.") do
+      module_str
+    else
+      "Elixir." <> module_str
+    end
+  end
+
+  # References that must already exist.
   defp to_atom(val) when is_atom(val), do: val
-  defp to_atom(val) when is_binary(val), do: safe_atom(val)
+  defp to_atom(val) when is_binary(val), do: existing_atom!(val)
 
-  defp safe_atom(val) when is_atom(val), do: val
+  # Genuinely new names (renamed functions/params, new modules).
+  defp to_new_atom(val) when is_atom(val), do: val
+  defp to_new_atom(val) when is_binary(val), do: new_atom!(val)
 
-  defp safe_atom(val) when is_binary(val) do
-    trimmed = String.trim(val)
+  defp existing_atom!(val) when is_binary(val), do: Rageg.Atom.existing!(val)
 
-    try do
-      String.to_existing_atom(trimmed)
-    rescue
-      ArgumentError -> String.to_atom(trimmed)
+  defp new_atom!(val) when is_binary(val), do: Rageg.Atom.new!(val)
+
+  defp parse_visibility(value) do
+    case value |> to_string() |> String.trim() |> String.downcase() do
+      "public" -> :public
+      "private" -> :private
+      other -> raise ArgumentError, "invalid visibility: #{inspect(other)}"
     end
   end
 
@@ -847,10 +860,10 @@ defmodule Rageg.Refactor do
     |> Enum.map(fn entry ->
       case String.split(entry, "/") do
         [name, arity_str] ->
-          {safe_atom(name), String.to_integer(arity_str)}
+          {to_atom(name), String.to_integer(arity_str)}
 
         [name] ->
-          {safe_atom(name), 0}
+          {to_atom(name), 0}
       end
     end)
   end

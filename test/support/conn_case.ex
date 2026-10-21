@@ -40,6 +40,13 @@ defmodule RagegWeb.ConnCase do
     {:ok, profile} = Rageg.Profiles.create(tmp_dir, "Test Project")
     Rageg.Profiles.switch(profile.id)
 
+    on_exit(fn ->
+      # Clear the active profile and any other test-created profiles, then
+      # remove the temporary project directory so state does not leak.
+      _ = Rageg.Profiles.clear_all!()
+      File.rm_rf(tmp_dir)
+    end)
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

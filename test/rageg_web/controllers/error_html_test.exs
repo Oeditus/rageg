@@ -1,5 +1,5 @@
 defmodule RagegWeb.ErrorHTMLTest do
-  use RagegWeb.ConnCase, async: true
+  use RagegWeb.ConnCase, async: false
 
   # Bring render_to_string/4 for testing custom views
   import Phoenix.Template, only: [render_to_string: 4]

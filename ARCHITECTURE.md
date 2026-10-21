@@ -10,7 +10,7 @@ same BEAM VM as Ragex, calling its Elixir APIs directly without HTTP overhead.
 
 ```
 +------------------+
-|  Browser (JS)    |  D3.js hooks, CodeMirror, Cytoscape.js
+|  Browser (JS)    |  D3.js hooks (force graph, scatter, cycle chart)
 +------------------+
          |
 +------------------+
@@ -59,9 +59,27 @@ Rageg.Supervisor (one_for_one)
   |-- RagegWeb.Telemetry
   |-- DNSCluster
   |-- Phoenix.PubSub (name: Rageg.PubSub)
+  |-- Rageg.TaskSupervisor (unlinked background tasks)
+  |-- Rageg.Profiles (GenServer, profile CRUD + activation)
   |-- Rageg.Stats (GenServer, polls every 3s)
   |-- RagegWeb.Endpoint (Bandit HTTP + LiveView WebSocket)
 ```
+
+Profile activation runs in a `Rageg.TaskSupervisor` child and replies to the
+caller with `GenServer.reply/2`, so the `Rageg.Profiles` GenServer stays
+responsive during long ingestions.
+
+## Security
+
+- **API keys** are stored at `~/.rageg/.ai_keys.json` with `0o600` permissions.
+  `Rageg.AIKeys.get_config/0` returns masked placeholders so real secrets are
+  never rendered into the browser; saving without entering a new value preserves
+  the stored key.
+- **Optional Basic auth**: set `RAGEG_AUTH_USER` and `RAGEG_AUTH_PASSWORD` to
+  enable `RagegWeb.Plugs.BasicAuth`. Production binds to loopback by default;
+  set `RAGEG_BIND_ALL=true` only behind an authenticating reverse proxy.
+- **Destructive MCP tools** (`destruction_level != :none`) require an explicit
+  confirmation showing the tool name, target, and risk before execution.
 
 ## Routing
 

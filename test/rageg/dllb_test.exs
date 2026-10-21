@@ -1,5 +1,5 @@
 defmodule Rageg.DllbTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Rageg.Dllb
 

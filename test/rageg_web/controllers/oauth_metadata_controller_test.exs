@@ -1,5 +1,5 @@
 defmodule RagegWeb.OAuthMetadataControllerTest do
-  use RagegWeb.ConnCase, async: true
+  use RagegWeb.ConnCase, async: false
 
   alias RagegWeb.OAuthMetadataController
 

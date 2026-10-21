@@ -54,7 +54,8 @@ defmodule RagegWeb.McpLive do
      |> assign(json_error: nil)
      |> assign(running: false)
      |> assign(result: nil)
-     |> assign(error: nil)}
+     |> assign(error: nil)
+     |> assign(pending_confirmation: nil)}
   end
 
   @impl Phoenix.LiveView
@@ -91,7 +92,8 @@ defmodule RagegWeb.McpLive do
            json_input: json_input,
            json_error: nil,
            result: nil,
-           error: nil
+           error: nil,
+           pending_confirmation: nil
          )}
     end
   end
@@ -152,37 +154,45 @@ defmodule RagegWeb.McpLive do
 
   def handle_event("execute_tool", _params, socket) do
     tool = socket.assigns.selected_tool
+    args = resolve_args(socket)
 
-    if is_nil(tool) do
-      {:noreply, assign(socket, error: gettext("No tool selected"))}
-    else
-      args =
-        if socket.assigns.mode == :json do
-          case Jason.decode(socket.assigns.json_input) do
-            {:ok, map} when is_map(map) -> map
-            _ -> nil
-          end
-        else
-          socket.assigns.form_args
-        end
+    cond do
+      is_nil(tool) ->
+        {:noreply, assign(socket, error: gettext("No tool selected"))}
 
-      if is_nil(args) do
+      is_nil(args) ->
         {:noreply, assign(socket, error: gettext("Invalid JSON parameters"))}
-      else
-        pid = self()
-        tool_name = tool.name
 
-        {:ok, task_pid} =
-          Task.start(fn ->
-            res = MCP.call_tool(tool_name, args)
-            send(pid, {:tool_executed, res})
-          end)
+      destruction_level(tool) == :none ->
+        {:noreply, run_tool(socket, tool, args)}
 
-        Process.monitor(task_pid)
-
-        {:noreply, assign(socket, running: true, error: nil, result: nil)}
-      end
+      true ->
+        # Destructive tools require explicit confirmation showing name/target/risk.
+        {:noreply,
+         assign(socket,
+           pending_confirmation: %{
+             tool: tool,
+             args: args,
+             name: tool.name,
+             level: destruction_level(tool),
+             target: socket.assigns.project_path
+           }
+         )}
     end
+  end
+
+  def handle_event("confirm_execute", _params, socket) do
+    case socket.assigns.pending_confirmation do
+      %{tool: tool, args: args} ->
+        {:noreply, run_tool(assign(socket, pending_confirmation: nil), tool, args)}
+
+      _ ->
+        {:noreply, assign(socket, pending_confirmation: nil)}
+    end
+  end
+
+  def handle_event("cancel_execute", _params, socket) do
+    {:noreply, assign(socket, pending_confirmation: nil)}
   end
 
   @impl Phoenix.LiveView
@@ -219,6 +229,61 @@ defmodule RagegWeb.McpLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
+      <%!-- Destructive tool confirmation --%>
+      <%= if @pending_confirmation do %>
+        <div
+          id="mcp-confirm-overlay"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        >
+          <div class="bg-base-100 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 space-y-4">
+            <h3 class="text-lg font-bold text-error flex items-center gap-2">
+              <.icon name="hero-exclamation-triangle" class="size-5" />
+              {gettext("Confirm destructive tool")}
+            </h3>
+            <p class="text-sm text-base-content/70">
+              {gettext("This tool is marked as")}
+              <span class="badge badge-error badge-sm font-mono uppercase">
+                {@pending_confirmation.level}
+              </span>
+              {gettext("It may modify or delete data and cannot be undone automatically.")}
+            </p>
+            <div class="bg-base-200 rounded-lg p-3 text-xs font-mono space-y-1">
+              <div>
+                <span class="font-bold">{gettext("Tool:")}</span>
+                {@pending_confirmation.name}
+              </div>
+              <div>
+                <span class="font-bold">{gettext("Target:")}</span>
+                {if @pending_confirmation.target == "",
+                  do: gettext("None"),
+                  else: @pending_confirmation.target}
+              </div>
+              <div>
+                <span class="font-bold">{gettext("Risk:")}</span>
+                {@pending_confirmation.level}
+              </div>
+            </div>
+            <div class="flex justify-end gap-3">
+              <button
+                id="mcp-confirm-cancel"
+                phx-click="cancel_execute"
+                class="btn btn-ghost btn-sm"
+              >
+                {gettext("Cancel")}
+              </button>
+              <button
+                id="mcp-confirm-run"
+                phx-click="confirm_execute"
+                class="btn btn-error btn-sm gap-1"
+              >
+                <.icon name="hero-play" class="size-4" />
+                {gettext("Execute anyway")}
+              </button>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
       <%!-- Header --%>
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -235,15 +300,21 @@ defmodule RagegWeb.McpLive do
           <%!-- Main Tab Switcher --%>
           <div class="join bg-base-200 p-1 rounded-lg">
             <button
-              class={["join-item btn btn-sm border-none", @view_tab == :tools && "btn-primary shadow-sm"]}
+              class={[
+                "join-item btn btn-sm border-none",
+                @view_tab == :tools && "btn-primary shadow-sm"
+              ]}
               phx-click="select_view_tab"
               phx-value-tab="tools"
             >
-              <.icon name="hero-wrench-Screwdriver" class="size-4" />
+              <.icon name="hero-wrench-screwdriver" class="size-4" />
               {gettext("Tools Runner")}
             </button>
             <button
-              class={["join-item btn btn-sm border-none", @view_tab == :plugins && "btn-primary shadow-sm"]}
+              class={[
+                "join-item btn btn-sm border-none",
+                @view_tab == :plugins && "btn-primary shadow-sm"
+              ]}
               phx-click="select_view_tab"
               phx-value-tab="plugins"
             >
@@ -256,7 +327,10 @@ defmodule RagegWeb.McpLive do
           </div>
 
           <div class="hidden sm:flex flex-wrap items-center gap-2">
-            <span class="badge badge-neutral badge-outline text-[11px] font-mono" title={gettext("Unix Domain Socket Path")}>
+            <span
+              class="badge badge-neutral badge-outline text-[11px] font-mono"
+              title={gettext("Unix Domain Socket Path")}
+            >
               <.icon name="hero-cpu-chip" class="size-3.5 mr-1" />
               {@socket_path}
             </span>
@@ -278,24 +352,26 @@ defmodule RagegWeb.McpLive do
                     value={@search_query}
                     placeholder={gettext("Search tools by name or description...")}
                     class="input input-sm input-bordered font-mono"
+                    name="query"
                     phx-keyup="search_tools"
-                    phx-value-query=""
                   />
                 </div>
 
                 <%!-- Category Filter Pills --%>
                 <div class="flex flex-wrap gap-1 border-b border-base-300 pb-2">
                   <button
-                    :for={cat <- [
-                      {"all", gettext("All")},
-                      {"rag", gettext("RAG")},
-                      {"plugins", gettext("Plugins")},
-                      {"url", gettext("URL")},
-                      {"refactor", gettext("Refactor")},
-                      {"quality", gettext("Quality")},
-                      {"git", gettext("Git")},
-                      {"image", gettext("Image")}
-                    ]}
+                    :for={
+                      cat <- [
+                        {"all", gettext("All")},
+                        {"rag", gettext("RAG")},
+                        {"plugins", gettext("Plugins")},
+                        {"url", gettext("URL")},
+                        {"refactor", gettext("Refactor")},
+                        {"quality", gettext("Quality")},
+                        {"git", gettext("Git")},
+                        {"image", gettext("Image")}
+                      ]
+                    }
                     class={[
                       "btn btn-xs rounded-full font-mono text-[10px]",
                       if(@category == elem(cat, 0), do: "btn-primary", else: "btn-ghost")
@@ -308,7 +384,10 @@ defmodule RagegWeb.McpLive do
                 </div>
 
                 <% filtered = MCP.filter_tools(@tools, @search_query, @category) %>
-                <div class="divide-y divide-base-300 max-h-[600px] overflow-y-auto pr-1" id="mcp-tools-list">
+                <div
+                  class="divide-y divide-base-300 max-h-[600px] overflow-y-auto pr-1"
+                  id="mcp-tools-list"
+                >
                   <button
                     :for={tool <- filtered}
                     id={"mcp-tool-item-#{tool.name}"}
@@ -331,7 +410,10 @@ defmodule RagegWeb.McpLive do
                         </span>
                         <span class={[
                           "badge badge-xs font-mono",
-                          if(@selected_tool && @selected_tool.name == tool.name, do: "badge-neutral", else: "badge-ghost")
+                          if(@selected_tool && @selected_tool.name == tool.name,
+                            do: "badge-neutral",
+                            else: "badge-ghost"
+                          )
                         ]}>
                           {param_count(tool)} {gettext("args")}
                         </span>
@@ -339,7 +421,10 @@ defmodule RagegWeb.McpLive do
                     </div>
                     <p class={[
                       "text-[11px] line-clamp-2 leading-tight",
-                      if(@selected_tool && @selected_tool.name == tool.name, do: "opacity-90", else: "text-base-content/60")
+                      if(@selected_tool && @selected_tool.name == tool.name,
+                        do: "opacity-90",
+                        else: "text-base-content/60"
+                      )
                     ]}>
                       {tool.description}
                     </p>
@@ -351,17 +436,23 @@ defmodule RagegWeb.McpLive do
 
           <%!-- Right Main Panel: Executor & Results --%>
           <div class="lg:col-span-8 space-y-6">
-            <div :if={@selected_tool} class="card bg-base-200 border border-base-300 shadow-sm" id="mcp-executor-card">
+            <div
+              :if={@selected_tool}
+              class="card bg-base-200 border border-base-300 shadow-sm"
+              id="mcp-executor-card"
+            >
               <div class="card-body p-5 space-y-4">
                 <%!-- Selected Tool Header --%>
                 <div class="flex items-start justify-between gap-4 pb-3 border-b border-base-300">
                   <div>
                     <div class="flex items-center gap-2">
                       <h2 class="text-xl font-bold font-mono text-primary">{@selected_tool.name}</h2>
-                      <span class="badge badge-sm badge-secondary font-mono">MCP Tool</span>
+                      <span class="badge badge-sm badge-secondary font-mono">
+                        {gettext("MCP Tool")}
+                      </span>
                       <% {b_class, b_label} = destruction_level_badge(@selected_tool) %>
                       <span class={["badge badge-sm font-mono uppercase text-[10px]", b_class]}>
-                        Safety: {b_label}
+                        {gettext("Safety:")} {b_label}
                       </span>
                     </div>
                     <p class="text-xs text-base-content/70 mt-1">
@@ -372,14 +463,20 @@ defmodule RagegWeb.McpLive do
                   <%!-- Mode switcher --%>
                   <div class="join border border-base-300 rounded-lg shrink-0">
                     <button
-                      class={["join-item btn btn-xs", if(@mode == :form, do: "btn-primary", else: "btn-ghost")]}
+                      class={[
+                        "join-item btn btn-xs",
+                        if(@mode == :form, do: "btn-primary", else: "btn-ghost")
+                      ]}
                       phx-click="switch_mode"
                       phx-value-mode="form"
                     >
                       {gettext("Form")}
                     </button>
                     <button
-                      class={["join-item btn btn-xs", if(@mode == :json, do: "btn-primary", else: "btn-ghost")]}
+                      class={[
+                        "join-item btn btn-xs",
+                        if(@mode == :json, do: "btn-primary", else: "btn-ghost")
+                      ]}
                       phx-click="switch_mode"
                       phx-value-mode="json"
                     >
@@ -401,7 +498,12 @@ defmodule RagegWeb.McpLive do
                         <label class="label py-1">
                           <span class="label-text text-xs font-mono font-semibold">
                             {prop_name}
-                            <span :if={required_param?(@selected_tool, prop_name)} class="text-error ml-0.5">*</span>
+                            <span
+                              :if={required_param?(@selected_tool, prop_name)}
+                              class="text-error ml-0.5"
+                            >
+                              *
+                            </span>
                           </span>
                           <span class="label-text-alt text-[10px] text-base-content/50 font-mono">
                             {Map.get(prop_spec, "type", "string")}
@@ -413,9 +515,9 @@ defmodule RagegWeb.McpLive do
                             <select
                               id={"form-input-#{prop_name}"}
                               class="select select-sm select-bordered w-full font-mono text-xs"
+                              name="value"
                               phx-change="update_form_arg"
                               phx-value-field={prop_name}
-                              phx-value-value=""
                             >
                               <option
                                 :for={opt <- Map.get(prop_spec, "enum", [])}
@@ -425,7 +527,6 @@ defmodule RagegWeb.McpLive do
                                 {opt}
                               </option>
                             </select>
-
                           <% Map.get(prop_spec, "type") == "boolean" -> %>
                             <label class="cursor-pointer label justify-start gap-3 bg-base-100 px-3 py-1.5 rounded-lg border border-base-300">
                               <input
@@ -439,20 +540,22 @@ defmodule RagegWeb.McpLive do
                               />
                               <span class="label-text text-xs font-mono">{prop_name}</span>
                             </label>
-
                           <% true -> %>
                             <input
                               type="text"
                               id={"form-input-#{prop_name}"}
+                              name="value"
                               value={to_string(Map.get(@form_args, prop_name, ""))}
                               placeholder={Map.get(prop_spec, "description", "")}
                               class="input input-sm input-bordered font-mono text-xs w-full"
                               phx-keyup="update_form_arg"
                               phx-value-field={prop_name}
-                              phx-value-value=""
                             />
                         <% end %>
-                        <span :if={Map.has_key?(prop_spec, "description")} class="text-[10px] text-base-content/50 mt-0.5">
+                        <span
+                          :if={Map.has_key?(prop_spec, "description")}
+                          class="text-[10px] text-base-content/50 mt-0.5"
+                        >
                           {Map.get(prop_spec, "description")}
                         </span>
                       </div>
@@ -460,16 +563,21 @@ defmodule RagegWeb.McpLive do
                   <% else %>
                     <div class="form-control w-full">
                       <label class="label py-1">
-                        <span class="label-text text-xs font-mono font-semibold">{gettext("JSON Arguments Payload")}</span>
+                        <span class="label-text text-xs font-mono font-semibold">
+                          {gettext("JSON Arguments Payload")}
+                        </span>
                       </label>
                       <textarea
                         id="mcp-json-textarea"
                         rows="7"
                         class="textarea textarea-bordered font-mono text-xs w-full"
+                        name="json"
                         phx-keyup="update_json"
-                        phx-value-json=""
                       >{@json_input}</textarea>
-                      <div :if={@json_error} class="text-xs text-error mt-1 flex items-center gap-1 font-mono">
+                      <div
+                        :if={@json_error}
+                        class="text-xs text-error mt-1 flex items-center gap-1 font-mono"
+                      >
                         <.icon name="hero-exclamation-circle" class="size-4 shrink-0" />
                         <span>{@json_error}</span>
                       </div>
@@ -480,7 +588,10 @@ defmodule RagegWeb.McpLive do
                 <%!-- Action Toolbar --%>
                 <div class="flex items-center justify-between pt-2">
                   <div class="text-xs text-base-content/50 font-mono">
-                    {gettext("Target Profile")}: <span class="font-bold">{if @project_path == "", do: gettext("None"), else: Path.basename(@project_path)}</span>
+                    {gettext("Target Profile")}:
+                    <span class="font-bold">
+                      {if @project_path == "", do: gettext("None"), else: Path.basename(@project_path)}
+                    </span>
                   </div>
 
                   <button
@@ -504,7 +615,11 @@ defmodule RagegWeb.McpLive do
             </div>
 
             <%!-- Result Box --%>
-            <div :if={@result} class="card bg-base-200 border border-base-300 shadow-sm" id="mcp-result-card">
+            <div
+              :if={@result}
+              class="card bg-base-200 border border-base-300 shadow-sm"
+              id="mcp-result-card"
+            >
               <div class="card-body p-4 space-y-3">
                 <div class="flex items-center justify-between pb-2 border-b border-base-300">
                   <div class="flex items-center gap-2">
@@ -527,7 +642,10 @@ defmodule RagegWeb.McpLive do
 
                 <%!-- Code Output Display --%>
                 <div class="bg-base-300 rounded-xl p-3 border border-base-300 font-mono text-xs overflow-x-auto max-h-[500px]">
-                  <pre class="whitespace-pre-wrap break-all text-base-content/90 font-mono" phx-no-curly-interpolation><%= format_output(@result.output) %></pre>
+                  <pre
+                    class="whitespace-pre-wrap break-all text-base-content/90 font-mono"
+                    phx-no-curly-interpolation
+                  ><%= format_output(@result.output) %></pre>
                 </div>
               </div>
             </div>
@@ -545,7 +663,9 @@ defmodule RagegWeb.McpLive do
                     {gettext("Registered Orchestrator Plugins")}
                   </h2>
                   <p class="text-xs text-base-content/60 mt-0.5">
-                    {gettext("Ragex modular domain plugins ordered topologically by dependency resolution and priority.")}
+                    {gettext(
+                      "Ragex modular domain plugins ordered topologically by dependency resolution and priority."
+                    )}
                   </p>
                 </div>
                 <span class="badge badge-primary font-mono text-xs">
@@ -561,8 +681,12 @@ defmodule RagegWeb.McpLive do
                   <div class="space-y-1.5 flex-1">
                     <div class="flex items-center gap-2">
                       <span class="font-bold text-sm">{plugin.name}</span>
-                      <span class="badge badge-ghost badge-sm font-mono text-[10px]">v{plugin.version}</span>
-                      <span class="badge badge-outline badge-sm font-mono text-[10px]">:{plugin.category}</span>
+                      <span class="badge badge-ghost badge-sm font-mono text-[10px]">
+                        v{plugin.version}
+                      </span>
+                      <span class="badge badge-outline badge-sm font-mono text-[10px]">
+                        :{plugin.category}
+                      </span>
                       <span class="badge badge-secondary badge-outline badge-sm font-mono text-[10px]">
                         Priority: {plugin.priority}
                       </span>
@@ -588,7 +712,13 @@ defmodule RagegWeb.McpLive do
 
                   <div class="flex items-center gap-3 shrink-0">
                     <button
-                      class={["btn btn-sm gap-2", if(plugin.enabled, do: "btn-success btn-outline", else: "btn-ghost text-base-content/50")]}
+                      class={[
+                        "btn btn-sm gap-2",
+                        if(plugin.enabled,
+                          do: "btn-success btn-outline",
+                          else: "btn-ghost text-base-content/50"
+                        )
+                      ]}
                       phx-click="toggle_plugin"
                       phx-value-id={to_string(plugin.id)}
                     >
@@ -610,7 +740,9 @@ defmodule RagegWeb.McpLive do
                 {gettext("Parallel Safety Task Supervisor")}
               </h3>
               <p class="text-xs text-base-content/60">
-                {gettext("Non-destructive tools (:destruction_level == :none) run concurrently across parallel supervisors.")}
+                {gettext(
+                  "Non-destructive tools (:destruction_level == :none) run concurrently across parallel supervisors."
+                )}
               </p>
               <div class="bg-base-100 p-3 rounded-lg border border-base-300 font-mono text-xs">
                 {if map_size(@running_tools) == 0,
@@ -643,6 +775,46 @@ defmodule RagegWeb.McpLive do
 
   defp destruction_level_badge(_), do: {"badge-ghost", "none"}
 
+  defp destruction_level(tool) when is_map(tool) do
+    Map.get(tool, :destruction_level) || Map.get(tool, "destruction_level") || :none
+  end
+
+  defp destruction_level(_), do: :none
+
+  defp resolve_args(socket) do
+    if socket.assigns.mode == :json do
+      case Jason.decode(socket.assigns.json_input) do
+        {:ok, map} when is_map(map) -> map
+        _ -> nil
+      end
+    else
+      socket.assigns.form_args
+    end
+  end
+
+  defp run_tool(socket, tool, args) do
+    pid = self()
+    tool_name = tool.name
+
+    start = fn fun ->
+      if Process.whereis(Rageg.TaskSupervisor) do
+        Task.Supervisor.start_child(Rageg.TaskSupervisor, fun)
+      else
+        Task.start(fun)
+      end
+    end
+
+    {:ok, task_pid} =
+      start.(fn ->
+        res = MCP.call_tool(tool_name, args)
+        send(pid, {:tool_executed, res})
+      end)
+
+    Process.monitor(task_pid)
+
+    assign(socket, running: true, error: nil, result: nil)
+  end
+
   defp default_arguments(nil, _path), do: %{}
 
   defp default_arguments(tool, path) do
@@ -674,27 +846,39 @@ defmodule RagegWeb.McpLive do
     end)
   end
 
-  defp get_schema_properties(%{inputSchema: %{properties: props}}) when is_map(props), do: props
-
-  defp get_schema_properties(%{"inputSchema" => %{"properties" => props}}) when is_map(props),
-    do: props
-
+  defp get_schema_properties(%{inputSchema: schema}), do: schema_properties(schema)
+  defp get_schema_properties(%{"inputSchema" => schema}), do: schema_properties(schema)
   defp get_schema_properties(_), do: %{}
+
+  defp schema_properties(schema) when is_map(schema) do
+    case Map.get(schema, "properties") || Map.get(schema, :properties) do
+      props when is_map(props) -> props
+      _ -> %{}
+    end
+  end
+
+  defp schema_properties(_), do: %{}
 
   defp param_count(tool) do
     props = get_schema_properties(tool)
     map_size(props)
   end
 
-  defp required_param?(%{inputSchema: %{required: reqs}}, prop_name) when is_list(reqs) do
-    prop_name in reqs
-  end
+  defp required_param?(%{inputSchema: schema}, prop_name), do: schema_required?(schema, prop_name)
 
-  defp required_param?(%{"inputSchema" => %{"required" => reqs}}, prop_name) when is_list(reqs) do
-    prop_name in reqs
-  end
+  defp required_param?(%{"inputSchema" => schema}, prop_name),
+    do: schema_required?(schema, prop_name)
 
   defp required_param?(_, _), do: false
+
+  defp schema_required?(schema, prop_name) when is_map(schema) do
+    case Map.get(schema, "required") || Map.get(schema, :required) do
+      reqs when is_list(reqs) -> prop_name in reqs
+      _ -> false
+    end
+  end
+
+  defp schema_required?(_schema, _prop_name), do: false
 
   defp parse_value("true"), do: true
   defp parse_value("false"), do: false

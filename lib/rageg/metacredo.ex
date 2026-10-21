@@ -27,6 +27,11 @@ defmodule Rageg.Metacredo do
 
   @cache_dir "~/.rageg/.metacredo_cache"
 
+  # Marks base64-encoded payloads stored in dllb. Base64's alphabet
+  # (A-Za-z0-9+/=) cannot break a single-quoted query string literal, so the
+  # JSON payload never has to be interpolated raw into a query.
+  @payload_marker "b64:"
+
   @doc """
   Runs MetaCredo analysis on the specified directory path.
   """
@@ -152,7 +157,7 @@ defmodule Rageg.Metacredo do
         payload = row["payload"] || row[:payload]
 
         if payload && is_binary(payload) do
-          case decode_result(payload) do
+          case payload |> unwrap_payload() |> decode_result() do
             {:ok, res} -> res
             _ -> nil
           end
@@ -169,9 +174,8 @@ defmodule Rageg.Metacredo do
 
   defp save_cached_result_dllb(path, result) do
     id = cache_id(path)
-    json = encode_result(result)
-    escaped_json = String.replace(json, "'", "''")
-    query = "CREATE _metacredo_cache:#{id} SET payload = '#{escaped_json}' ON CONFLICT UPDATE"
+    payload = @payload_marker <> Base.encode64(encode_result(result))
+    query = "CREATE _metacredo_cache:#{id} SET payload = '#{payload}' ON CONFLICT UPDATE"
     Rageg.Dllb.query(query)
     :ok
   rescue
@@ -179,6 +183,17 @@ defmodule Rageg.Metacredo do
   catch
     _, _ -> :ok
   end
+
+  # Base64 payloads are prefixed with a marker; legacy plain-JSON payloads are
+  # still accepted so previously cached data remains readable.
+  defp unwrap_payload(@payload_marker <> encoded) do
+    case Base.decode64(encoded) do
+      {:ok, json} -> json
+      :error -> encoded
+    end
+  end
+
+  defp unwrap_payload(payload), do: payload
 
   defp cache_id(path) do
     "m_" <> (:crypto.hash(:sha256, path) |> Base.encode16(case: :lower))

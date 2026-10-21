@@ -119,6 +119,19 @@ iex -S mix phx.server
 
 Visit http://localhost:4000
 
+## Security & authentication
+
+Rageg can reset all state, execute destructive MCP tools, run arbitrary dllb
+queries, refactor files, and ingest arbitrary directories. It is designed to run
+locally.
+
+- Production binds to loopback by default. Set `RAGEG_BIND_ALL=true` only when
+  running behind an authenticating reverse proxy.
+- Enable HTTP Basic auth by setting `RAGEG_AUTH_USER` and `RAGEG_AUTH_PASSWORD`.
+- API keys are stored in `~/.rageg/.ai_keys.json` (mode `0o600`) and are never
+  sent to the browser; the configuration page shows masked placeholders.
+- Destructive MCP tools require an explicit confirmation before they run.
+
 ## Tests
 
 ```bash
@@ -145,7 +158,7 @@ rageg/
         dashboard_live.ex  -- Real-time dashboard with stat cards
         graph_live.ex      -- Knowledge Graph Explorer with D3 hook
         dllb_live.ex       -- dllb backend explorer (sub-page router)
-        placeholder_live.ex -- Placeholder stubs for future phases
+        placeholder_live.ex -- Empty (all phases implemented)
       plugs/
         locale.ex          -- i18n locale detection plug
   priv/

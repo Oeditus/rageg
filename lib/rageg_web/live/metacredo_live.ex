@@ -170,7 +170,9 @@ defmodule RagegWeb.MetacredoLive do
         <div class="flex items-center gap-2 text-sm font-mono truncate">
           <.icon name="hero-folder" class="size-4 text-secondary shrink-0" />
           <span class="text-base-content/60">{gettext("Target Path")}:</span>
-          <span class="font-bold truncate">{if @project_path == "", do: gettext("None selected"), else: @project_path}</span>
+          <span class="font-bold truncate">
+            {if @project_path == "", do: gettext("None selected"), else: @project_path}
+          </span>
         </div>
         <span :if={@result} class="badge badge-outline text-xs shrink-0">
           {@result.source_files_count} {gettext("files inspected")} ({@result.timing_ms} ms)
@@ -188,7 +190,9 @@ defmodule RagegWeb.MetacredoLive do
         <%!-- Summary Cards --%>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div class="stat bg-base-200 rounded-box border border-base-300 p-4">
-            <div class="stat-title text-xs font-medium uppercase tracking-wider">{gettext("Total Issues")}</div>
+            <div class="stat-title text-xs font-medium uppercase tracking-wider">
+              {gettext("Total Issues")}
+            </div>
             <div class={[
               "stat-value text-2xl mt-1",
               if(@result.summary.total > 0, do: "text-warning", else: "text-success")
@@ -199,20 +203,28 @@ defmodule RagegWeb.MetacredoLive do
           </div>
 
           <div class="stat bg-base-200 rounded-box border border-base-300 p-4">
-            <div class="stat-title text-xs font-medium uppercase tracking-wider">{gettext("Files Analyzed")}</div>
+            <div class="stat-title text-xs font-medium uppercase tracking-wider">
+              {gettext("Files Analyzed")}
+            </div>
             <div class="stat-value text-2xl mt-1 text-info">{@result.source_files_count}</div>
             <div class="stat-desc text-xs mt-1">{gettext("supported source files")}</div>
           </div>
 
           <div class="stat bg-base-200 rounded-box border border-base-300 p-4">
-            <div class="stat-title text-xs font-medium uppercase tracking-wider">{gettext("Execution Time")}</div>
+            <div class="stat-title text-xs font-medium uppercase tracking-wider">
+              {gettext("Execution Time")}
+            </div>
             <div class="stat-value text-2xl mt-1 text-secondary">{@result.timing_ms} ms</div>
             <div class="stat-desc text-xs mt-1">{gettext("parallel AST pipeline")}</div>
           </div>
 
           <div class="stat bg-base-200 rounded-box border border-base-300 p-4">
-            <div class="stat-title text-xs font-medium uppercase tracking-wider">{gettext("Categories")}</div>
-            <div class="stat-value text-2xl mt-1 text-accent">{map_size(@result.summary.by_category)}</div>
+            <div class="stat-title text-xs font-medium uppercase tracking-wider">
+              {gettext("Categories")}
+            </div>
+            <div class="stat-value text-2xl mt-1 text-accent">
+              {map_size(@result.summary.by_category)}
+            </div>
             <div class="stat-desc text-xs mt-1">{gettext("active categories triggered")}</div>
           </div>
         </div>
@@ -252,8 +264,8 @@ defmodule RagegWeb.MetacredoLive do
               value={@search_query}
               placeholder={gettext("Search issues or files...")}
               class="input input-sm input-bordered font-mono"
+              name="query"
               phx-keyup="update_search"
-              phx-value-query=""
             />
           </div>
         </div>
@@ -264,7 +276,10 @@ defmodule RagegWeb.MetacredoLive do
         <% current_page = min(@page, total_pages) %>
         <% paged_issues = Enum.slice(@filtered_issues, (current_page - 1) * @per_page, @per_page) %>
 
-        <div :if={@filtered_issues == []} class="card bg-base-200 border border-base-300 text-center p-8">
+        <div
+          :if={@filtered_issues == []}
+          class="card bg-base-200 border border-base-300 text-center p-8"
+        >
           <.icon name="hero-check-circle" class="size-12 text-success mx-auto mb-3" />
           <h3 class="font-bold text-lg">{gettext("No issues found")}</h3>
           <p class="text-xs text-base-content/60 mt-1">
@@ -274,9 +289,16 @@ defmodule RagegWeb.MetacredoLive do
 
         <div :if={@filtered_issues != []} class="space-y-3" id="metacredo-issues-list">
           <%!-- Pagination bar top --%>
-          <div :if={total_pages > 1} class="flex items-center justify-between bg-base-200 px-4 py-2 rounded-xl border border-base-300 text-xs" id="metacredo-pagination-top">
+          <div
+            :if={total_pages > 1}
+            class="flex items-center justify-between bg-base-200 px-4 py-2 rounded-xl border border-base-300 text-xs"
+            id="metacredo-pagination-top"
+          >
             <span class="text-base-content/60 font-mono">
-              {gettext("Showing")} {(current_page - 1) * @per_page + 1}-{min(current_page * @per_page, total_filtered)} {gettext("of")} {total_filtered} {gettext("issues")}
+              {gettext("Showing")} {(current_page - 1) * @per_page + 1}-{min(
+                current_page * @per_page,
+                total_filtered
+              )} {gettext("of")} {total_filtered} {gettext("issues")}
             </span>
             <div class="flex items-center gap-2">
               <button
@@ -311,7 +333,10 @@ defmodule RagegWeb.MetacredoLive do
             <div class="card-body p-4 space-y-3">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
-                  <span class={["badge badge-sm font-semibold capitalize", severity_badge_class(issue.severity)]}>
+                  <span class={[
+                    "badge badge-sm font-semibold capitalize",
+                    severity_badge_class(issue.severity)
+                  ]}>
                     {issue.severity}
                   </span>
                   <span class="badge badge-sm badge-outline font-mono text-xs capitalize">
@@ -323,7 +348,9 @@ defmodule RagegWeb.MetacredoLive do
                 </div>
 
                 <div :if={issue.filename} class="text-xs font-mono text-base-content/70">
-                  {issue.filename}{if issue.line_no, do: ":#{issue.line_no}", else: ""}{if issue.column, do: ":#{issue.column}", else: ""}
+                  {issue.filename}{if issue.line_no, do: ":#{issue.line_no}", else: ""}{if issue.column,
+                    do: ":#{issue.column}",
+                    else: ""}
                 </div>
               </div>
 
@@ -331,27 +358,44 @@ defmodule RagegWeb.MetacredoLive do
                 {issue.message}
               </p>
 
-              <div :if={issue.trigger} class="bg-base-300 rounded p-2 text-xs font-mono text-base-content/80 overflow-x-auto">
+              <div
+                :if={issue.trigger}
+                class="bg-base-300 rounded p-2 text-xs font-mono text-base-content/80 overflow-x-auto"
+              >
                 <code>{issue.trigger}</code>
               </div>
 
               <%!-- Code Snippet with target line highlighted --%>
-              <div :if={issue.snippet} class="bg-base-300/80 rounded-lg p-3 text-xs font-mono border border-base-300 space-y-1 overflow-x-auto">
+              <div
+                :if={issue.snippet}
+                class="bg-base-300/80 rounded-lg p-3 text-xs font-mono border border-base-300 space-y-1 overflow-x-auto"
+              >
                 <div class="text-base-content/50 text-[10px] uppercase font-semibold mb-1.5 flex items-center gap-1">
                   <.icon name="hero-code-bracket" class="size-3 text-primary" />
                   <span>{issue.filename}:{issue.line_no}</span>
                 </div>
-                <div :for={line <- issue.snippet.lines} class={[
-                  "flex items-start gap-3 px-2 py-0.5 rounded transition-colors",
-                  if(line.is_target, do: "bg-warning/20 text-warning-content font-bold border-l-2 border-warning", else: "text-base-content/70")
-                ]}>
-                  <span class="w-8 text-right select-none text-base-content/40 shrink-0 font-mono">{line.line_no}</span>
+                <div
+                  :for={line <- issue.snippet.lines}
+                  class={[
+                    "flex items-start gap-3 px-2 py-0.5 rounded transition-colors",
+                    if(line.is_target,
+                      do: "bg-warning/20 text-warning-content font-bold border-l-2 border-warning",
+                      else: "text-base-content/70"
+                    )
+                  ]}
+                >
+                  <span class="w-8 text-right select-none text-base-content/40 shrink-0 font-mono">
+                    {line.line_no}
+                  </span>
                   <pre class="font-mono whitespace-pre overflow-x-auto"><code>{line.content}</code></pre>
                 </div>
               </div>
 
               <%!-- Fix Suggestion --%>
-              <div :if={issue.suggestion} class="bg-primary/5 rounded-lg p-2.5 text-xs border border-primary/20 flex items-start gap-2 text-base-content/90">
+              <div
+                :if={issue.suggestion}
+                class="bg-primary/5 rounded-lg p-2.5 text-xs border border-primary/20 flex items-start gap-2 text-base-content/90"
+              >
                 <.icon name="hero-light-bulb" class="size-4 text-primary shrink-0 mt-0.5" />
                 <div>
                   <span class="font-bold text-primary mr-1">{gettext("Suggested Fix")}:</span>
@@ -362,9 +406,16 @@ defmodule RagegWeb.MetacredoLive do
           </div>
 
           <%!-- Pagination bar bottom --%>
-          <div :if={total_pages > 1} class="flex items-center justify-between bg-base-200 px-4 py-2 rounded-xl border border-base-300 text-xs" id="metacredo-pagination-bottom">
+          <div
+            :if={total_pages > 1}
+            class="flex items-center justify-between bg-base-200 px-4 py-2 rounded-xl border border-base-300 text-xs"
+            id="metacredo-pagination-bottom"
+          >
             <span class="text-base-content/60 font-mono">
-              {gettext("Showing")} {(current_page - 1) * @per_page + 1}-{min(current_page * @per_page, total_filtered)} {gettext("of")} {total_filtered} {gettext("issues")}
+              {gettext("Showing")} {(current_page - 1) * @per_page + 1}-{min(
+                current_page * @per_page,
+                total_filtered
+              )} {gettext("of")} {total_filtered} {gettext("issues")}
             </span>
             <div class="flex items-center gap-2">
               <button

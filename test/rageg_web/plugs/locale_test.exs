@@ -1,5 +1,5 @@
 defmodule RagegWeb.Plugs.LocaleTest do
-  use RagegWeb.ConnCase, async: true
+  use RagegWeb.ConnCase, async: false
 
   alias RagegWeb.Plugs.Locale
 

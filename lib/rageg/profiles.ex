@@ -109,7 +109,7 @@ defmodule Rageg.Profiles do
     active_profile = restore_active_profile(dir, all_profiles)
 
     if active_profile do
-      Task.start(fn ->
+      start_background(fn ->
         activate_project(active_profile, fn _ -> :ok end)
       end)
     end
@@ -167,7 +167,7 @@ defmodule Rageg.Profiles do
         if state.active == nil do
           save_active_profile_id(profile.id, state.profiles_dir)
 
-          Task.start(fn ->
+          start_background(fn ->
             activate_project(profile, fn _ -> :ok end)
             ready = Profile.mark_ingested(profile)
             save_profile(ready, state.profiles_dir)
@@ -200,7 +200,7 @@ defmodule Rageg.Profiles do
             if next_p do
               save_active_profile_id(next_p.id, state.profiles_dir)
 
-              Task.start(fn ->
+              start_background(fn ->
                 activate_project(next_p, fn _ -> :ok end)
                 ready = Profile.mark_ingested(next_p)
                 save_profile(ready, state.profiles_dir)
@@ -240,7 +240,7 @@ defmodule Rageg.Profiles do
     {:reply, :ok, %{state | active: nil}}
   end
 
-  def handle_call({:switch, id, opts}, _from, state) do
+  def handle_call({:switch, id, opts}, from, state) do
     on_progress = Keyword.get(opts, :on_progress, fn _ -> :ok end)
 
     case find_profile(id, state.profiles_dir) do
@@ -254,31 +254,24 @@ defmodule Rageg.Profiles do
 
         Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, indexing_profile})
 
-        case activate_project(indexing_profile, on_progress) do
-          :ok ->
-            ready_profile = Profile.mark_ingested(indexing_profile)
-            save_profile(ready_profile, state.profiles_dir)
+        # Run the (potentially minutes-long) activation off the GenServer so it
+        # can keep servicing list/get/create/delete calls. The caller still
+        # blocks until `GenServer.reply/2` fires (from the :switch_finished
+        # cast), preserving the synchronous `switch/2` contract.
+        dir = state.profiles_dir
 
-            Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, ready_profile})
-            on_progress.("Profile active: #{ready_profile.name}")
+        start_background(fn ->
+          switch_activate(indexing_profile, dir, on_progress, from)
+        end)
 
-            {:reply, {:ok, ready_profile}, %{state | active: ready_profile}}
-
-          {:error, reason} ->
-            # Activation did not complete (e.g. the per-project dllb server
-            # could not be brought up in time). Keep the profile as the active
-            # target but do not falsely mark it "ready": surface the failure
-            # to the caller so the UI can stop showing the switch spinner and
-            # report the reason.
-            failed_profile = %{indexing_profile | status: "error"}
-            save_profile(failed_profile, state.profiles_dir)
-
-            Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, failed_profile})
-            on_progress.("Profile activation failed: #{inspect(reason)}")
-
-            {:reply, {:error, reason}, %{state | active: failed_profile}}
-        end
+        {:noreply, state}
     end
+  end
+
+  @impl GenServer
+  def handle_cast({:switch_finished, from, reply, profile}, state) do
+    GenServer.reply(from, reply)
+    {:noreply, %{state | active: profile}}
   end
 
   # Runs the full per-project activation pipeline. Any failure -- including a
@@ -302,6 +295,64 @@ defmodule Rageg.Profiles do
   defp activation_failure(on_progress, message) do
     on_progress.("Activation notice: #{message}")
     {:error, message}
+  end
+
+  # Runs the activation pipeline for a switch, always replying exactly once via
+  # the :switch_finished cast so the caller never blocks forever if something
+  # unexpected raises.
+  defp switch_activate(indexing_profile, dir, on_progress, from) do
+    {status_profile, reply} =
+      case activate_project(indexing_profile, on_progress) do
+        :ok ->
+          ready_profile = Profile.mark_ingested(indexing_profile)
+          save_profile(ready_profile, dir)
+          on_progress.("Profile active: #{ready_profile.name}")
+          {ready_profile, {:ok, ready_profile}}
+
+        {:error, reason} ->
+          failed_profile = %{indexing_profile | status: "error"}
+          save_profile(failed_profile, dir)
+          on_progress.("Profile activation failed: #{inspect(reason)}")
+          {failed_profile, {:error, reason}}
+      end
+
+    Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, status_profile})
+    GenServer.cast(__MODULE__, {:switch_finished, from, reply, status_profile})
+  rescue
+    e ->
+      failed_profile = %{indexing_profile | status: "error"}
+      safe_save_profile(failed_profile, dir)
+      Phoenix.PubSub.broadcast(Rageg.PubSub, @topic, {:profile_switched, failed_profile})
+
+      GenServer.cast(
+        __MODULE__,
+        {:switch_finished, from, {:error, Exception.message(e)}, failed_profile}
+      )
+  catch
+    kind, reason ->
+      failed_profile = %{indexing_profile | status: "error"}
+      safe_save_profile(failed_profile, dir)
+
+      GenServer.cast(
+        __MODULE__,
+        {:switch_finished, from, {:error, "#{kind}: #{inspect(reason)}"}, failed_profile}
+      )
+  end
+
+  defp safe_save_profile(profile, dir) do
+    save_profile(profile, dir)
+  rescue
+    _ -> :ok
+  end
+
+  # Prefer the unlinked Task.Supervisor so a crashing background job cannot take
+  # down the Profiles GenServer.
+  defp start_background(fun) do
+    if Process.whereis(Rageg.TaskSupervisor) do
+      Task.Supervisor.start_child(Rageg.TaskSupervisor, fun)
+    else
+      Task.start(fun)
+    end
   end
 
   defp do_activate_project(%Profile{} = profile, on_progress) do
@@ -429,7 +480,10 @@ defmodule Rageg.Profiles do
       case File.read(file) do
         {:ok, json} ->
           try do
-            [Profile.from_json(:json.decode(json))]
+            case Jason.decode(json) do
+              {:ok, map} -> [Profile.from_json(map)]
+              _ -> []
+            end
           rescue
             _ -> []
           end
@@ -450,13 +504,7 @@ defmodule Rageg.Profiles do
   defp save_profile(%Profile{} = profile, dir) do
     file = Path.join(dir, "#{profile.id}.json")
 
-    map =
-      profile
-      |> Map.from_struct()
-      |> Map.new(fn {k, v} -> {k, if(v == nil, do: :null, else: v)} end)
-
-    json = map |> :json.encode() |> IO.iodata_to_binary()
-    File.write(file, json)
+    File.write(file, Jason.encode!(Map.from_struct(profile)))
   end
 
   defp dllb_connected? do

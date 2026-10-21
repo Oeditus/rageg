@@ -1,5 +1,5 @@
 defmodule RagegWeb.ErrorJSONTest do
-  use RagegWeb.ConnCase, async: true
+  use RagegWeb.ConnCase, async: false
 
   test "renders 404" do
     assert RagegWeb.ErrorJSON.render("404.json", %{}) == %{errors: %{detail: "Not Found"}}

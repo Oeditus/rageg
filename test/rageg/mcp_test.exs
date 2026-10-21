@@ -71,6 +71,25 @@ defmodule Rageg.MCPTest do
     end
   end
 
+  describe "normalize_tool_schema/1 (via list_tools/0)" do
+    test "inputSchema uses string keys" do
+      for tool <- MCP.list_tools() do
+        assert is_map(tool.inputSchema)
+        assert Enum.all?(Map.keys(tool.inputSchema), &is_binary/1)
+      end
+    end
+
+    test "at least one tool exposes properties readable via string keys" do
+      tool =
+        Enum.find(MCP.list_tools(), fn t ->
+          map_size(Map.get(t.inputSchema, "properties") || %{}) > 0
+        end)
+
+      assert tool != nil
+      assert is_map(Map.get(tool.inputSchema, "properties"))
+    end
+  end
+
   describe "filter_tools/3" do
     test "filters tools by query string" do
       tools = MCP.list_tools()

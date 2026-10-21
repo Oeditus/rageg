@@ -316,7 +316,9 @@ defmodule RagegWeb.AnalyzeLive do
           <div class="card-body p-4 space-y-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text font-semibold">{gettext("Target URL or Git Repository")}</span>
+                <span class="label-text font-semibold">
+                  {gettext("Target URL or Git Repository")}
+                </span>
               </label>
               <div class="flex gap-2">
                 <input
@@ -352,8 +354,12 @@ defmodule RagegWeb.AnalyzeLive do
                   phx-change="update_url_opts"
                   disabled={@running}
                 >
-                  <option value="shallow" selected={@url_depth == "shallow"}>{gettext("Shallow (Quick Overview)")}</option>
-                  <option value="deep" selected={@url_depth == "deep"}>{gettext("Deep (Full AST & Relations)")}</option>
+                  <option value="shallow" selected={@url_depth == "shallow"}>
+                    {gettext("Shallow (Quick Overview)")}
+                  </option>
+                  <option value="deep" selected={@url_depth == "deep"}>
+                    {gettext("Deep (Full AST & Relations)")}
+                  </option>
                 </select>
               </div>
 
@@ -477,13 +483,19 @@ defmodule RagegWeb.AnalyzeLive do
             <div class="stat bg-base-100 rounded-box p-3">
               <div class="stat-title text-xs">{gettext("Schema Format")}</div>
               <div class="stat-value text-sm font-mono">
-                {Map.get(@url_result, :version, Map.get(@url_result, "version", "ragex.url_analysis.v1"))}
+                {Map.get(
+                  @url_result,
+                  :version,
+                  Map.get(@url_result, "version", "ragex.url_analysis.v1")
+                )}
               </div>
             </div>
             <div class="stat bg-base-100 rounded-box p-3">
               <div class="stat-title text-xs">{gettext("Indexed Status")}</div>
               <div class="stat-value text-sm font-semibold text-success">
-                {if Map.get(@url_result, :indexed, Map.get(@url_result, "indexed", true)), do: "Knowledge Graph Updated", else: "Not Indexed"}
+                {if Map.get(@url_result, :indexed, Map.get(@url_result, "indexed", true)),
+                  do: "Knowledge Graph Updated",
+                  else: "Not Indexed"}
               </div>
             </div>
             <div class="stat bg-base-100 rounded-box p-3">
@@ -496,8 +508,13 @@ defmodule RagegWeb.AnalyzeLive do
 
           <%!-- Raw Report Details --%>
           <div>
-            <h3 class="text-xs font-semibold uppercase text-base-content/60 mb-1">{gettext("Analysis Payload JSON")}</h3>
-            <pre class="bg-base-300 p-3 rounded-lg font-mono text-xs overflow-x-auto max-h-96" phx-no-curly-interpolation><%= Jason.encode!(@url_result, pretty: true) %></pre>
+            <h3 class="text-xs font-semibold uppercase text-base-content/60 mb-1">
+              {gettext("Analysis Payload JSON")}
+            </h3>
+            <pre
+              class="bg-base-300 p-3 rounded-lg font-mono text-xs overflow-x-auto max-h-96"
+              phx-no-curly-interpolation
+            ><%= Jason.encode!(@url_result, pretty: true) %></pre>
           </div>
         </div>
       </div>

@@ -130,13 +130,26 @@ defmodule RagegWeb.ProfileSwitcher do
         <span class="max-w-32 truncate">
           {if @active, do: @active.name, else: gettext("No project")}
         </span>
-        <span :if={@active && Map.get(@active, :status) == "ready"} class="size-2 rounded-full bg-success inline-block shrink-0" title={gettext("Ready")}></span>
-        <span :if={@active && Map.get(@active, :status) == "indexing"} class="loading loading-spinner loading-xs text-primary shrink-0" title={gettext("Indexing...")}></span>
+        <span
+          :if={@active && Map.get(@active, :status) == "ready"}
+          class="size-2 rounded-full bg-success inline-block shrink-0"
+          title={gettext("Ready")}
+        >
+        </span>
+        <span
+          :if={@active && Map.get(@active, :status) == "indexing"}
+          class="loading loading-spinner loading-xs text-primary shrink-0"
+          title={gettext("Indexing...")}
+        >
+        </span>
         <.icon name="hero-chevron-down" class="size-3" />
       </button>
 
       <%!-- Progress indicator during switch --%>
-      <div :if={@switching} class="absolute top-full right-0 mt-1 z-50 p-2 bg-base-200 rounded-box shadow-lg border border-base-300 w-64">
+      <div
+        :if={@switching}
+        class="absolute top-full right-0 mt-1 z-50 p-2 bg-base-200 rounded-box shadow-lg border border-base-300 w-64"
+      >
         <div class="flex items-center gap-2 text-xs">
           <span class="loading loading-spinner loading-xs text-primary"></span>
           <span class="truncate">{@progress}</span>
@@ -153,7 +166,10 @@ defmodule RagegWeb.ProfileSwitcher do
           <li :for={profile <- @profiles}>
             <div class="flex items-center gap-2 group">
               <button
-                class={["flex-1 text-left truncate", if(@active && @active.id == profile.id, do: "font-bold text-primary", else: "")]}
+                class={[
+                  "flex-1 text-left truncate",
+                  if(@active && @active.id == profile.id, do: "font-bold text-primary", else: "")
+                ]}
                 phx-click="switch_profile"
                 phx-value-id={profile.id}
                 phx-target={@myself}
@@ -207,7 +223,12 @@ defmodule RagegWeb.ProfileSwitcher do
             <div :if={@error} class="text-xs text-error mt-1">{@error}</div>
             <div class="flex gap-1 mt-2">
               <button type="submit" class="btn btn-xs btn-primary flex-1">{gettext("Add")}</button>
-              <button type="button" class="btn btn-xs btn-ghost" phx-click="cancel_add" phx-target={@myself}>
+              <button
+                type="button"
+                class="btn btn-xs btn-ghost"
+                phx-click="cancel_add"
+                phx-target={@myself}
+              >
                 {gettext("Cancel")}
               </button>
             </div>

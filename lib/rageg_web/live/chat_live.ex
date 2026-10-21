@@ -97,7 +97,7 @@ defmodule RagegWeb.ChatLive do
   end
 
   def handle_event("open_in_ide", %{"path" => path, "line" => line}, socket) do
-    open_file_in_editor(path, line)
+    RagegWeb.EditorOpener.open(path, line)
     {:noreply, socket}
   end
 
@@ -287,7 +287,7 @@ defmodule RagegWeb.ChatLive do
     ~H"""
     <div class="chat chat-start">
       <div class="chat-bubble chat-bubble-primary text-sm prose prose-sm prose-invert max-w-none">
-        {render_markdown(@message.content)}
+        {RagegWeb.Markdown.render(@message.content)}
       </div>
     </div>
     """
@@ -301,80 +301,5 @@ defmodule RagegWeb.ChatLive do
       </div>
     </div>
     """
-  end
-
-  defp render_markdown(nil), do: ""
-
-  defp render_markdown(text) do
-    case Code.ensure_loaded(MDEx) do
-      {:module, MDEx} ->
-        case text
-             |> insert_intermediate_links()
-             |> MDEx.to_html(plugins: [MDExGFM, MDExMermaid, MDExKatex, MdexMultilineCells]) do
-          {:ok, html} ->
-            html
-            |> convert_ide_links()
-            |> Phoenix.HTML.raw()
-
-          {:error, _} ->
-            text
-        end
-
-      _ ->
-        text
-    end
-  end
-
-  defp insert_intermediate_links(text) do
-    regex =
-      ~r/\b((?:lib|web|test|config|assets|src|app)\/[\w\-\.\/]+\.(?:exs?|py|rb|js|ts|json|heex|html|css))(?::(\d+))?\b/
-
-    Regex.replace(regex, text, fn _full, path, line ->
-      line_num = if line == "", do: "1", else: line
-      display = if line == "", do: path, else: "#{path}:#{line}"
-      "[#{display}](ide://open?path=#{path}&line=#{line_num})"
-    end)
-  end
-
-  defp convert_ide_links(html) do
-    regex = ~r/<a href="ide:\/\/open\?path=([^"&]+)(?:&|&amp;)line=(\d+)">([^<]+)<\/a>/
-
-    Regex.replace(regex, html, fn _full, path, line, display ->
-      ~s|<a href="#" phx-click="open_in_ide" phx-value-path="#{path}" phx-value-line="#{line}" class="underline text-primary font-mono cursor-pointer hover:opacity-80">#{display}</a>|
-    end)
-  end
-
-  defp open_file_in_editor(file_path, line) do
-    editor = System.get_env("PLUG_EDITOR") || System.get_env("EDITOR") || "code"
-    abs_path = Path.expand(file_path)
-    line_str = to_string(line)
-
-    cond do
-      editor =~ "__FILE__" ->
-        cmd_string =
-          editor
-          |> String.replace("__FILE__", abs_path)
-          |> String.replace("__LINE__", line_str)
-
-        [prog | args] = String.split(cmd_string, " ")
-        System.cmd(prog, args)
-
-      editor in ["code", "cursor", "vscode"] ->
-        System.cmd(editor, ["--goto", "#{abs_path}:#{line_str}"])
-
-      editor in ["subl", "sublime"] ->
-        System.cmd(editor, ["#{abs_path}:#{line_str}"])
-
-      true ->
-        parts = String.split(editor, " ")
-
-        case parts do
-          [prog | args] -> System.cmd(prog, args ++ [abs_path])
-          _ -> System.cmd("xdg-open", [abs_path])
-        end
-    end
-  rescue
-    _ ->
-      System.cmd("xdg-open", [Path.expand(file_path)])
   end
 end

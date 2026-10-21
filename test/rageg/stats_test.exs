@@ -63,16 +63,7 @@ defmodule Rageg.StatsTest do
   end
 
   describe "GenServer" do
-    test "current/0 returns a snapshot even when the server is not running" do
-      # Stats is not started in this test (no application), so current/0
-      # should catch the exit and return an empty snapshot
-      snapshot = Stats.current()
-
-      assert %{graph: _, fetched_at: _} = snapshot
-    end
-
-    test "current/0 returns a valid snapshot when server is running" do
-      # The application starts Stats automatically, so we can query it
+    test "current/0 always returns a valid snapshot (running or not)" do
       snapshot = Stats.current()
 
       assert %{graph: _, embeddings: _, cache: _, ai_usage: _, dllb: _, fetched_at: _} = snapshot

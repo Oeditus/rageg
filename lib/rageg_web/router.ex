@@ -26,6 +26,7 @@ defmodule RagegWeb.Router do
   use RagegWeb, :router
 
   pipeline :browser do
+    plug RagegWeb.Plugs.BasicAuth
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash

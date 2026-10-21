@@ -47,6 +47,9 @@ npm-debug.log
 # Rageg runtime data (per-project dllb stats, ingest/metacredo caches).
 /.rageg/
 
+# Nx/EXLA JIT compute cache (recreated per machine).
+/.nv/
+
 # Yoke agent runtime state (sessions, job logs, tool payloads).
 /.yoke/
 

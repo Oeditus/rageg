@@ -23,12 +23,12 @@ defmodule Rageg.Plugins do
   Enables a registered plugin by ID.
   """
   def enable_plugin(plugin_id) do
-    id = normalize_id(plugin_id)
-
-    if Process.whereis(Ragex.Plugin.Registry) do
-      Ragex.Plugin.Registry.enable_plugin(id)
-    else
-      {:error, :registry_not_running}
+    with {:ok, id} <- normalize_id(plugin_id) do
+      if Process.whereis(Ragex.Plugin.Registry) do
+        Ragex.Plugin.Registry.enable_plugin(id)
+      else
+        {:error, :registry_not_running}
+      end
     end
   rescue
     e -> {:error, Exception.message(e)}
@@ -38,12 +38,12 @@ defmodule Rageg.Plugins do
   Disables a registered plugin by ID.
   """
   def disable_plugin(plugin_id) do
-    id = normalize_id(plugin_id)
-
-    if Process.whereis(Ragex.Plugin.Registry) do
-      Ragex.Plugin.Registry.disable_plugin(id)
-    else
-      {:error, :registry_not_running}
+    with {:ok, id} <- normalize_id(plugin_id) do
+      if Process.whereis(Ragex.Plugin.Registry) do
+        Ragex.Plugin.Registry.disable_plugin(id)
+      else
+        {:error, :registry_not_running}
+      end
     end
   rescue
     e -> {:error, Exception.message(e)}
@@ -114,11 +114,6 @@ defmodule Rageg.Plugins do
     _ -> %{}
   end
 
-  defp normalize_id(id) when is_atom(id), do: id
-
-  defp normalize_id(id) when is_binary(id) do
-    String.to_existing_atom(id)
-  rescue
-    _ -> String.to_atom(id)
-  end
+  defp normalize_id(id) when is_atom(id), do: {:ok, id}
+  defp normalize_id(id) when is_binary(id), do: Rageg.Atom.existing(id)
 end

@@ -47,7 +47,7 @@ defmodule Rageg.Dllb do
     merged = Map.put(existing, project_tag, entry)
 
     File.mkdir_p!(Path.dirname(path))
-    File.write(path, IO.iodata_to_binary(:json.encode(merged)))
+    File.write(path, Jason.encode!(merged))
   end
 
   @doc "Loads persisted ingestion stats from disk."
@@ -56,8 +56,14 @@ defmodule Rageg.Dllb do
     path = Path.expand(@stats_file)
 
     case File.read(path) do
-      {:ok, json} -> :json.decode(json)
-      _ -> %{}
+      {:ok, json} ->
+        case Jason.decode(json) do
+          {:ok, map} when is_map(map) -> map
+          _ -> %{}
+        end
+
+      _ ->
+        %{}
     end
   rescue
     _ -> %{}
